@@ -1,0 +1,45 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - contextcheck
+    - errname
+    - errorlint
+    - exhaustive
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - noctx
+    - revive
+    - unconvert
+    - unparam
+    - usestdlibvars
+  settings:
+    errcheck:
+      # Printing to stdout/stderr is best effort; nothing useful can be done on failure.
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+  exclusions:
+    rules:
+      # The task runner executes the go toolchain with arguments it builds itself.
+      - path: tools/task/
+        linters: [gosec]
+        text: "G204"
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      module-path: github.com/mbarboss/whyfail
+      extra:
+        group-params: true
+    goimports:
+      local-prefixes:
+        - github.com/mbarboss/whyfail

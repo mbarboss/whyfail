@@ -1,0 +1,12 @@
+# Changelog
+
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Added
+
+- Project foundation: Go module, task runner, linting, pre-commit hooks, CI on Linux,
+  macOS and Windows, CodeQL and Dependabot.

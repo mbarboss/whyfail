@@ -1,0 +1,14 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: format
+      glob: "*.go"
+      run: go tool -modfile=tools/golangci-lint/go.mod golangci-lint fmt {staged_files}
+      stage_fixed: true
+    - name: lint
+      glob: "*.go"
+      run: go run ./tools/task lint
+    - name: secrets
+      run: go tool -modfile=tools/gitleaks/go.mod gitleaks git --pre-commit --staged --redact --no-banner
+    - name: large-files
+      run: go run ./tools/task large-files {staged_files}
