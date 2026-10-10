@@ -28,8 +28,8 @@ func TestParseDefaults(t *testing.T) {
 	if cfg.Timeout != DefaultTimeout {
 		t.Errorf("Timeout = %v, want %v", cfg.Timeout, DefaultTimeout)
 	}
-	if cfg.ShowVersion || cfg.AllowRemote || len(cfg.Args) != 0 {
-		t.Errorf("unexpected ShowVersion=%v Args=%v", cfg.ShowVersion, cfg.Args)
+	if cfg.ShowVersion || cfg.AllowRemote || len(cfg.Args) != 0 || len(cfg.Command) != 0 {
+		t.Errorf("unexpected ShowVersion=%v Args=%v Command=%v", cfg.ShowVersion, cfg.Args, cfg.Command)
 	}
 }
 
@@ -175,13 +175,52 @@ func TestParseVersionFlag(t *testing.T) {
 	}
 }
 
-func TestParseKeepsPositionalArgs(t *testing.T) {
-	cfg, err := Parse([]string{"-model", "qwen3.5:4b", "--", "make", "-j4"}, env(nil), &bytes.Buffer{})
+func TestParseTakesCommandAfterDoubleDash(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"after flags", []string{"-model", "qwen3.5:4b", "--", "make", "-j4"}, "make -j4"},
+		{"without flags", []string{"--", "go", "test", "-run", "X"}, "go test -run X"},
+		{"command named like the separator", []string{"--", "--", "x"}, "-- x"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := Parse(tt.args, env(nil), &bytes.Buffer{})
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+
+			if got := strings.Join(cfg.Command, " "); got != tt.want {
+				t.Errorf("Command = %q, want %q", got, tt.want)
+			}
+			if len(cfg.Args) != 0 {
+				t.Errorf("Args = %q, want none", cfg.Args)
+			}
+		})
+	}
+}
+
+func TestParseKeepsPositionalArgsWithoutDoubleDash(t *testing.T) {
+	cfg, err := Parse([]string{"make", "--", "-j4"}, env(nil), &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if got := strings.Join(cfg.Args, " "); got != "make -j4" {
+
+	if got := strings.Join(cfg.Args, " "); got != "make -- -j4" {
 		t.Errorf("Args = %q", got)
+	}
+	if len(cfg.Command) != 0 {
+		t.Errorf("Command = %q, want none", cfg.Command)
+	}
+}
+
+func TestParseRejectsDoubleDashWithoutCommand(t *testing.T) {
+	_, err := Parse([]string{"-model", "qwen3.5:4b", "--"}, env(nil), &bytes.Buffer{})
+
+	if !errors.Is(err, ErrInvalid) {
+		t.Errorf("err = %v, want ErrInvalid", err)
 	}
 }
 
@@ -193,7 +232,7 @@ func TestParseHelpListsFlagsAndEnvironment(t *testing.T) {
 	if !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("err = %v, want flag.ErrHelp", err)
 	}
-	for _, want := range []string{"-model", "-host", "-timeout", "-allow-remote", "-version", "WHYFAIL_MODEL", "OLLAMA_HOST", "WHYFAIL_TIMEOUT"} {
+	for _, want := range []string{"2>&1 | whyfail", "whyfail [flags] -- <command>", "-model", "-host", "-timeout", "-allow-remote", "-version", "WHYFAIL_MODEL", "OLLAMA_HOST", "WHYFAIL_TIMEOUT"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("help does not mention %s", want)
 		}

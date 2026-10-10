@@ -22,6 +22,11 @@ All notable changes to this project are documented here. The format follows
 - Ollama hosts that are not on this machine are refused unless `--allow-remote` is passed;
   every connection is checked, and `--allow-remote` prints a warning on each run.
   `OLLAMA_HOST=0.0.0.0` is treated as this machine.
+- Wrapper mode: `whyfail -- <command> [args]` runs the command without a shell, streams
+  its output and explains it only when it fails. whyfail exits with the command's exit
+  code (127 when the command is not found, 126 when it cannot be started), and an
+  interrupted command is not explained. The command line and exit code are part of the
+  prompt, with secrets in the command line redacted.
 - Model output is stripped of terminal escape sequences and control characters before it
   is printed, and only the tail of the command output is sent to the model.
 

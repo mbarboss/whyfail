@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -30,44 +31,68 @@ type Tail struct {
 	Truncated bool
 }
 
-const chunkSize = 32 << 10
-
 // ReadTail reads r to EOF and keeps at most the last l.MaxLines lines and
 // l.MaxBytes bytes, as valid UTF-8 with LF line endings. Memory use stays
 // bounded regardless of the input size.
 func ReadTail(r io.Reader, l Limits) (Tail, error) {
+	w, err := newTailWriter(l)
+	if err != nil {
+		return Tail{}, err
+	}
+	if _, err := io.Copy(w, r); err != nil {
+		return Tail{}, fmt.Errorf("capture: read input: %w", err)
+	}
+	return w.Tail()
+}
+
+// tailWriter keeps the last bytes written to it. It is safe for concurrent
+// use, so a command's stdout and stderr can share one.
+type tailWriter struct {
+	mu      sync.Mutex
+	limits  Limits
+	keep    int
+	buf     []byte
+	dropped bool
+}
+
+func newTailWriter(l Limits) (*tailWriter, error) {
 	if l.MaxBytes <= 0 || l.MaxLines <= 0 {
-		return Tail{}, fmt.Errorf("capture: limits must be positive, got %+v", l)
+		return nil, fmt.Errorf("capture: limits must be positive, got %+v", l)
 	}
+	// CRLF is normalized in Tail, so keep a little more than MaxBytes to make
+	// up for the carriage returns that will be dropped.
+	return &tailWriter{limits: l, keep: 2 * l.MaxBytes}, nil
+}
 
-	// CRLF is normalized after reading, so keep a little more than MaxBytes to
-	// make up for the carriage returns that will be dropped.
-	keep := 2 * l.MaxBytes
-	buf := make([]byte, 0, keep+chunkSize)
-	chunk := make([]byte, chunkSize)
-	dropped := false
-	for {
-		n, err := r.Read(chunk)
-		buf = append(buf, chunk[:n]...)
-		if over := len(buf) - keep; over > 0 {
-			buf = append(buf[:0], buf[over:]...)
-			dropped = true
-		}
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return Tail{}, fmt.Errorf("capture: read input: %w", err)
-		}
+// Write never fails, so a broken terminal never loses the captured output.
+func (w *tailWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n := len(p)
+	if len(p) > w.keep {
+		p = p[len(p)-w.keep:]
+		w.dropped = true
 	}
+	w.buf = append(w.buf, p...)
+	if over := len(w.buf) - w.keep; over > 0 {
+		w.buf = append(w.buf[:0], w.buf[over:]...)
+		w.dropped = true
+	}
+	return n, nil
+}
 
-	buf = bytes.ReplaceAll(buf, []byte("\r\n"), []byte("\n"))
-	text, truncated := cut(buf, l)
+// Tail applies the limits to what was written. It returns ErrEmpty when that
+// holds nothing but whitespace.
+func (w *tailWriter) Tail() (Tail, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	buf := bytes.ReplaceAll(w.buf, []byte("\r\n"), []byte("\n"))
+	text, truncated := cut(buf, w.limits)
 	text = strings.ToValidUTF8(text, "�")
 	if strings.TrimSpace(text) == "" {
 		return Tail{}, ErrEmpty
 	}
-	return Tail{Text: text, Truncated: truncated || dropped}, nil
+	return Tail{Text: text, Truncated: truncated || w.dropped}, nil
 }
 
 // cut applies the byte and line limits to b, starting on a line boundary when

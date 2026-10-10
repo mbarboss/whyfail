@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,16 +27,20 @@ import (
 	"github.com/mbarboss/whyfail/internal/render"
 )
 
-// Exit codes shared by every whyfail mode.
+// Exit codes shared by every whyfail mode. In wrapper mode whyfail exits with
+// the command's own code once the command has run.
 const (
 	exitOK          = 0
 	exitFailure     = 1
 	exitUsage       = 2
+	exitCannotRun   = 126
+	exitNotFound    = 127
 	exitInterrupted = 130
 )
 
 const (
 	pipeUsage        = "  <command> 2>&1 | whyfail"
+	wrapUsage        = "  whyfail -- <command> [args]"
 	progressInterval = 100 * time.Millisecond
 	// resolveTimeout bounds the startup check that the host is loopback.
 	resolveTimeout = 2 * time.Second
@@ -108,8 +113,15 @@ func run(ctx context.Context, args []string, d deps) int {
 		fmt.Fprintf(d.stdout, "whyfail %s\n", version)
 		return exitOK
 	}
+	if len(cfg.Command) > 0 {
+		// Check the host first so a refused host never costs a full run.
+		if code := checkHost(ctx, cfg, d); code != exitOK {
+			return code
+		}
+		return explainCommand(ctx, cfg, d)
+	}
 	if len(cfg.Args) > 0 {
-		fmt.Fprintf(d.stderr, "whyfail: unexpected arguments. Pipe the failed command's output instead:\n%s\n", pipeUsage)
+		fmt.Fprintf(d.stderr, "whyfail: unexpected arguments. Put the command after --, or pipe its output:\n%s\n%s\n", wrapUsage, pipeUsage)
 		return exitUsage
 	}
 	if d.stdinIsTerminal {
@@ -159,11 +171,67 @@ func explainPipe(ctx context.Context, cfg config.Config, d deps) int {
 		fmt.Fprintf(d.stderr, "whyfail: %v\n", err)
 		return exitFailure
 	}
+	return explain(ctx, cfg, d, prompt.Failure{Output: tail.Text, Truncated: tail.Truncated})
+}
 
-	redacted := redact.Redact(tail.Text)
-	reportRedaction(d.stderr, redacted)
+// explainCommand runs the wrapped command and explains it only when it fails.
+// Once the command has run, whyfail exits with its code even when the
+// explanation fails, so wrapping a command never changes what scripts see.
+func explainCommand(ctx context.Context, cfg config.Config, d deps) int {
+	res, err := capture.Run(cfg.Command, d.stdin, d.stdout, d.stderr, capture.DefaultLimits)
+	switch {
+	case errors.Is(err, capture.ErrNotFound):
+		fmt.Fprintf(d.stderr, "whyfail: command not found: %s\n", render.Sanitize(cfg.Command[0]))
+		return exitNotFound
+	case err != nil:
+		fmt.Fprintf(d.stderr, "whyfail: %s\n", render.Sanitize(err.Error()))
+		if errors.Is(err, capture.ErrCannotRun) {
+			return exitCannotRun
+		}
+		return exitFailure
+	}
 
-	req := prompt.Build(prompt.Failure{Output: redacted.Text, Truncated: tail.Truncated})
+	switch {
+	case ctx.Err() != nil:
+		// Interrupted: the user already knows why the command stopped.
+		return res.ExitCode
+	case res.ExitCode == 0:
+		return exitOK
+	case res.Tail.Text == "":
+		fmt.Fprintf(d.stderr, "whyfail: the command exited with code %d without any output to explain.\n", res.ExitCode)
+		return res.ExitCode
+	}
+
+	explain(ctx, cfg, d, prompt.Failure{
+		Command:   formatCommand(cfg.Command),
+		ExitCode:  res.ExitCode,
+		Output:    res.Tail.Text,
+		Truncated: res.Tail.Truncated,
+	})
+	return res.ExitCode
+}
+
+// formatCommand joins argv for display, quoting arguments that would not
+// survive a plain space-separated join.
+func formatCommand(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, a := range argv {
+		if a == "" || strings.ContainsAny(a, " \t\n\"'\\") {
+			a = strconv.Quote(a)
+		}
+		parts[i] = a
+	}
+	return strings.Join(parts, " ")
+}
+
+// explain redacts f, asks the model and prints the answer. It returns exitOK,
+// or the code for the error it reported.
+func explain(ctx context.Context, cfg config.Config, d deps, f prompt.Failure) int {
+	command, output := redact.Redact(f.Command), redact.Redact(f.Output)
+	reportRedaction(d.stderr, command, output)
+	f.Command, f.Output = command.Text, output.Text
+
+	req := prompt.Build(f)
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 
@@ -186,7 +254,13 @@ func explainPipe(ctx context.Context, cfg config.Config, d deps) int {
 
 // reportRedaction tells the user that secrets were removed, naming only their
 // kinds.
-func reportRedaction(w io.Writer, r redact.Result) {
+func reportRedaction(w io.Writer, results ...redact.Result) {
+	r := redact.Result{Counts: map[redact.Kind]int{}}
+	for _, res := range results {
+		for k, c := range res.Counts {
+			r.Counts[k] += c
+		}
+	}
 	n := r.Total()
 	if n == 0 {
 		return

@@ -113,13 +113,16 @@ func TestRunRejectsInvalidConfig(t *testing.T) {
 	}
 }
 
-func TestRunRejectsPositionalArgsForNow(t *testing.T) {
+func TestRunRejectsCommandWithoutDoubleDash(t *testing.T) {
 	h, d := newHarness("error\n")
 
 	code := run(context.Background(), []string{"make"}, d)
 
 	if code != exitUsage || h.fake.calls != 0 {
 		t.Errorf("exit code = %d, calls = %d", code, h.fake.calls)
+	}
+	if !strings.Contains(h.stderr.String(), "whyfail -- <command>") {
+		t.Errorf("stderr should show wrapper usage: %q", h.stderr.String())
 	}
 }
 

@@ -35,7 +35,7 @@ const (
 	maxModelLen  = 200
 	minTimeout   = time.Second
 	maxTimeout   = 10 * time.Minute
-	usageExample = "  <command> 2>&1 | whyfail [flags]"
+	usageExample = "  <command> 2>&1 | whyfail [flags]\n  whyfail [flags] -- <command> [args]"
 )
 
 // ErrInvalid reports a flag or environment value that failed validation.
@@ -54,7 +54,9 @@ type Config struct {
 	// AllowRemote permits a host that is not loopback. It is a flag only, so
 	// sending output off the machine is always an explicit choice.
 	AllowRemote bool
-	// Args holds the positional arguments left after the flags.
+	// Command is the command to run in wrapper mode: everything after "--".
+	Command []string
+	// Args holds positional arguments given without "--".
 	Args []string
 }
 
@@ -76,7 +78,20 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (Config,
 		return Config{}, err
 	}
 
-	cfg := Config{ShowVersion: *showVersion, AllowRemote: *allowRemote, Args: fs.Args()}
+	cfg := Config{ShowVersion: *showVersion, AllowRemote: *allowRemote}
+	rest := fs.Args()
+	// The flag package drops the "--" that ends the flags; only a command
+	// after it selects wrapper mode, so that bare words stay free for
+	// subcommands.
+	if i := len(args) - len(rest) - 1; i >= 0 && args[i] == "--" {
+		if len(rest) == 0 {
+			return Config{}, fmt.Errorf("%w: no command after --", ErrInvalid)
+		}
+		cfg.Command = rest
+	} else {
+		cfg.Args = rest
+	}
+
 	var err error
 	if cfg.Model, err = parseModel(*model); err != nil {
 		return Config{}, err
