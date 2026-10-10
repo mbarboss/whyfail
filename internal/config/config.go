@@ -65,6 +65,8 @@ type Config struct {
 	Shell sysinfo.Shell
 	// Doctor selects the health check subcommand.
 	Doctor bool
+	// JSON selects machine-readable output. It is a flag only.
+	JSON bool
 }
 
 // Parse reads flags from args, falling back to environment variables looked up
@@ -80,10 +82,14 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (Config,
 	timeout := fs.String("timeout", envOr(getenv, EnvTimeout, DefaultTimeout.String()), "maximum time to wait for an answer (env "+EnvTimeout+")")
 	shell := fs.String("shell", envOr(getenv, EnvShell, ""), "shell to write fixes for: bash, zsh, fish, powershell or cmd (default: detected; env "+EnvShell+")")
 	allowRemote := fs.Bool("allow-remote", false, "allow an Ollama host that is not on this machine; command output is then sent over the network")
+	jsonOut := fs.Bool("json", false, "print one JSON object instead of text")
 	showVersion := fs.Bool("version", false, "print the version and exit")
+	// Errors keep JSON so they can be reported in the format the caller asked
+	// for, as long as -json came before the error.
+	fail := func(err error) (Config, error) { return Config{JSON: *jsonOut}, err }
 
 	if err := fs.Parse(args); err != nil {
-		return Config{}, err
+		return fail(err)
 	}
 
 	var cfg Config
@@ -94,35 +100,35 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (Config,
 	switch i := len(args) - len(rest) - 1; {
 	case i >= 0 && args[i] == "--":
 		if len(rest) == 0 {
-			return Config{}, fmt.Errorf("%w: no command after --", ErrInvalid)
+			return fail(fmt.Errorf("%w: no command after --", ErrInvalid))
 		}
 		cfg.Command = rest
 	case len(rest) > 0 && rest[0] == "doctor":
 		// Flags may also follow the subcommand.
 		if err := fs.Parse(rest[1:]); err != nil {
-			return Config{}, err
+			return fail(err)
 		}
 		if fs.NArg() > 0 {
-			return Config{}, fmt.Errorf("%w: doctor takes no arguments", ErrInvalid)
+			return fail(fmt.Errorf("%w: doctor takes no arguments", ErrInvalid))
 		}
 		cfg.Doctor = true
 	default:
 		cfg.Args = rest
 	}
-	cfg.ShowVersion, cfg.AllowRemote = *showVersion, *allowRemote
+	cfg.ShowVersion, cfg.AllowRemote, cfg.JSON = *showVersion, *allowRemote, *jsonOut
 
 	var err error
 	if cfg.Model, err = parseModel(*model); err != nil {
-		return Config{}, err
+		return fail(err)
 	}
 	if cfg.Host, err = parseHost(*host); err != nil {
-		return Config{}, err
+		return fail(err)
 	}
 	if cfg.Timeout, err = parseTimeout(*timeout); err != nil {
-		return Config{}, err
+		return fail(err)
 	}
 	if cfg.Shell, err = parseShell(*shell); err != nil {
-		return Config{}, err
+		return fail(err)
 	}
 	return cfg, nil
 }

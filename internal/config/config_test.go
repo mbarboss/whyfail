@@ -234,7 +234,7 @@ func TestParseHelpListsFlagsAndEnvironment(t *testing.T) {
 	if !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("err = %v, want flag.ErrHelp", err)
 	}
-	for _, want := range []string{"2>&1 | whyfail", "whyfail [flags] -- <command>", "whyfail doctor", "-model", "-host", "-timeout", "-allow-remote", "-shell", "-version", "WHYFAIL_MODEL", "OLLAMA_HOST", "WHYFAIL_TIMEOUT", "WHYFAIL_SHELL"} {
+	for _, want := range []string{"2>&1 | whyfail", "whyfail [flags] -- <command>", "whyfail doctor", "-model", "-host", "-timeout", "-allow-remote", "-shell", "-json", "-version", "WHYFAIL_MODEL", "OLLAMA_HOST", "WHYFAIL_TIMEOUT", "WHYFAIL_SHELL"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("help does not mention %s", want)
 		}
@@ -341,5 +341,47 @@ func TestParseDoctorRejectsBadFlagAfterIt(t *testing.T) {
 
 	if err == nil {
 		t.Error("Parse accepted an unknown flag after doctor")
+	}
+}
+
+func TestParseJSONFlag(t *testing.T) {
+	cfg, err := Parse([]string{"-json", "--", "make"}, env(nil), &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if !cfg.JSON {
+		t.Error("JSON = false")
+	}
+}
+
+func TestParseJSONHasNoEnvironmentVariable(t *testing.T) {
+	cfg, err := Parse(nil, env(map[string]string{"WHYFAIL_JSON": "1"}), &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if cfg.JSON {
+		t.Error("JSON enabled from the environment")
+	}
+}
+
+func TestParseKeepsJSONOnErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"invalid value", []string{"-json", "-timeout", "forever"}},
+		{"unknown flag after it", []string{"-json", "-nope"}},
+		{"bad flag after doctor", []string{"-json", "doctor", "-nope"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := Parse(tt.args, env(nil), &bytes.Buffer{})
+
+			if err == nil || !cfg.JSON {
+				t.Errorf("err = %v, JSON = %v; want an error with JSON kept", err, cfg.JSON)
+			}
+		})
 	}
 }

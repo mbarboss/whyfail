@@ -33,6 +33,9 @@ All notable changes to this project are documented here. The format follows
 - `whyfail doctor` checks that the Ollama host is on this machine, that Ollama 0.9.0 or
   later is running and that the model is installed, with an install, start, upgrade or
   `ollama pull` fix for each failed check. Exit code 0 when all checks pass, 1 otherwise.
+- `--json` prints one JSON object (cause, explanation, fixes with danger warnings, model,
+  command and exit code) or an error with a stable `error.code`, for pipe mode, wrapper
+  mode and `doctor`. In wrapper mode the command's output then goes to stderr.
 - Model output is stripped of terminal escape sequences and control characters before it
   is printed, and only the tail of the command output is sent to the model.
 

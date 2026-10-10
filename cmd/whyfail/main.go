@@ -104,6 +104,26 @@ func isTerminal(f *os.File) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
+// failure is an error reported to the user. code is the stable JSON
+// error.code; message is shown after "whyfail: " in text mode and must never
+// hold captured output.
+type failure struct {
+	code, message string
+	// quiet failures print nothing in text mode, because the user has already
+	// seen why (an interrupt, or a flag error printed by the flag package).
+	quiet bool
+}
+
+// outcome is what a run produced. finish prints it in the selected format.
+type outcome struct {
+	exit   int
+	answer *llm.Explanation
+	fail   *failure
+	// command and childExit are set in wrapper mode once the command ran.
+	command   *string
+	childExit *int
+}
+
 // run executes the requested mode and returns the process exit code.
 func run(ctx context.Context, args []string, d deps) int {
 	cfg, err := config.Parse(args, d.getenv, d.stderr)
@@ -111,11 +131,10 @@ func run(ctx context.Context, args []string, d deps) int {
 	case errors.Is(err, flag.ErrHelp):
 		return exitOK
 	case errors.Is(err, config.ErrInvalid):
-		fmt.Fprintf(d.stderr, "whyfail: %v\n", err)
-		return exitUsage
+		return finish(cfg, d, outcome{exit: exitUsage, fail: &failure{code: "invalid_config", message: err.Error()}})
 	case err != nil:
 		// The flag package has already printed the error and the usage.
-		return exitUsage
+		return finish(cfg, d, outcome{exit: exitUsage, fail: &failure{code: "usage", message: err.Error(), quiet: true}})
 	}
 
 	if cfg.ShowVersion {
@@ -127,24 +146,62 @@ func run(ctx context.Context, args []string, d deps) int {
 	}
 	if len(cfg.Command) > 0 {
 		// Check the host first so a refused host never costs a full run.
-		if code := checkHost(ctx, cfg, d); code != exitOK {
-			return code
+		if f := checkHost(ctx, cfg, d); f != nil {
+			return finish(cfg, d, outcome{exit: exitUsage, fail: f})
 		}
-		return explainCommand(ctx, cfg, d)
+		return finish(cfg, d, explainCommand(ctx, cfg, d))
 	}
 	if len(cfg.Args) > 0 {
-		fmt.Fprintf(d.stderr, "whyfail: unexpected arguments. Put the command after --, or pipe its output:\n%s\n%s\n", wrapUsage, pipeUsage)
-		return exitUsage
+		return finish(cfg, d, outcome{exit: exitUsage, fail: &failure{
+			code:    "usage",
+			message: fmt.Sprintf("unexpected arguments. Put the command after --, or pipe its output:\n%s\n%s", wrapUsage, pipeUsage),
+		}})
 	}
 	if d.stdinIsTerminal {
-		fmt.Fprintf(d.stderr, "whyfail: nothing to explain. Pipe the failed command's output into whyfail:\n%s\n", pipeUsage)
-		return exitUsage
+		return finish(cfg, d, outcome{exit: exitUsage, fail: &failure{
+			code:    "usage",
+			message: "nothing to explain. Pipe the failed command's output into whyfail:\n" + pipeUsage,
+		}})
 	}
 
-	if code := checkHost(ctx, cfg, d); code != exitOK {
-		return code
+	if f := checkHost(ctx, cfg, d); f != nil {
+		return finish(cfg, d, outcome{exit: exitUsage, fail: f})
 	}
-	return explainPipe(ctx, cfg, d)
+	return finish(cfg, d, explainPipe(ctx, cfg, d))
+}
+
+// finish prints o as text or JSON and returns the exit code.
+func finish(cfg config.Config, d deps, o outcome) int {
+	if cfg.JSON {
+		r := render.Report{Model: cfg.Model, Command: o.command, ExitCode: o.childExit, Answer: o.answer}
+		if o.fail != nil {
+			r.Error = &render.ReportError{Code: o.fail.code, Message: o.fail.message}
+		}
+		if err := render.JSON(d.stdout, r, apply.Warnings); err != nil {
+			return writeFailed(d, o, err)
+		}
+		return o.exit
+	}
+
+	if o.fail != nil && !o.fail.quiet {
+		fmt.Fprintf(d.stderr, "whyfail: %s\n", o.fail.message)
+	}
+	if o.answer != nil {
+		if err := render.Text(d.stdout, *o.answer, apply.Warnings); err != nil {
+			return writeFailed(d, o, err)
+		}
+	}
+	return o.exit
+}
+
+// writeFailed reports that the result could not be printed. In wrapper mode
+// the command's exit code still wins.
+func writeFailed(d deps, o outcome, err error) int {
+	fmt.Fprintf(d.stderr, "whyfail: write output: %v\n", err)
+	if o.childExit != nil {
+		return o.exit
+	}
+	return exitFailure
 }
 
 // runDoctor checks that Ollama and the model are ready. A refused host is a
@@ -165,12 +222,15 @@ func runDoctor(ctx context.Context, cfg config.Config, d deps) int {
 		Server:   d.newServer(cfg),
 	})
 	if ctx.Err() != nil {
-		fmt.Fprintln(d.stderr, "whyfail: interrupted")
-		return exitInterrupted
+		return finish(cfg, d, outcome{exit: exitInterrupted, fail: &failure{code: "interrupted", message: "interrupted"}})
 	}
-	if err := render.Doctor(d.stdout, results); err != nil {
-		fmt.Fprintf(d.stderr, "whyfail: write output: %v\n", err)
-		return exitFailure
+
+	write := render.Doctor
+	if cfg.JSON {
+		write = render.DoctorJSON
+	}
+	if err := write(d.stdout, results); err != nil {
+		return writeFailed(d, outcome{}, err)
 	}
 	if !doctor.Passed(results) {
 		return exitFailure
@@ -179,15 +239,16 @@ func runDoctor(ctx context.Context, cfg config.Config, d deps) int {
 }
 
 // checkHost refuses a host that is not on this machine unless --allow-remote
-// was passed, in which case it warns on every run.
-func checkHost(ctx context.Context, cfg config.Config, d deps) int {
+// was passed, in which case it warns on every run. It returns nil when the
+// host may be used.
+func checkHost(ctx context.Context, cfg config.Config, d deps) *failure {
 	if cfg.AllowRemote {
 		transport := ""
 		if cfg.Host.Scheme == "http" {
 			transport = " over unencrypted HTTP"
 		}
 		fmt.Fprintf(d.stderr, "whyfail: warning: --allow-remote is set; command output is sent to %s%s.\n", cfg.Host, transport)
-		return exitOK
+		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, resolveTimeout)
@@ -195,24 +256,30 @@ func checkHost(ctx context.Context, cfg config.Config, d deps) int {
 	err := netguard.CheckHost(ctx, d.resolver, cfg.Host.Hostname())
 	switch {
 	case err == nil:
-		return exitOK
+		return nil
 	case errors.Is(err, netguard.ErrUnresolved):
-		fmt.Fprintf(d.stderr, "whyfail: cannot resolve %s to check that it is on this machine. Use an address such as %s, or pass --allow-remote.\n", cfg.Host, config.DefaultHost)
+		return &failure{
+			code:    "host_unresolved",
+			message: fmt.Sprintf("cannot resolve %s to check that it is on this machine. Use an address such as %s, or pass --allow-remote.", cfg.Host, config.DefaultHost),
+		}
 	default:
-		fmt.Fprintf(d.stderr, "whyfail: refusing to send output to %s: it is not a loopback address. Pass --allow-remote to allow it.\n", cfg.Host)
+		return &failure{
+			code:    "host_refused",
+			message: fmt.Sprintf("refusing to send output to %s: it is not a loopback address. Pass --allow-remote to allow it.", cfg.Host),
+		}
 	}
-	return exitUsage
 }
 
-func explainPipe(ctx context.Context, cfg config.Config, d deps) int {
+func explainPipe(ctx context.Context, cfg config.Config, d deps) outcome {
 	tail, err := capture.ReadTail(d.stdin, capture.DefaultLimits)
 	if errors.Is(err, capture.ErrEmpty) {
-		fmt.Fprintf(d.stderr, "whyfail: the input was empty. Remember to include stderr:\n%s\n", pipeUsage)
-		return exitUsage
+		return outcome{exit: exitUsage, fail: &failure{
+			code:    "empty_input",
+			message: "the input was empty. Remember to include stderr:\n" + pipeUsage,
+		}}
 	}
 	if err != nil {
-		fmt.Fprintf(d.stderr, "whyfail: %v\n", err)
-		return exitFailure
+		return outcome{exit: exitFailure, fail: &failure{code: "internal", message: err.Error()}}
 	}
 	return explain(ctx, cfg, d, prompt.Failure{Output: tail.Text, Truncated: tail.Truncated})
 }
@@ -220,38 +287,45 @@ func explainPipe(ctx context.Context, cfg config.Config, d deps) int {
 // explainCommand runs the wrapped command and explains it only when it fails.
 // Once the command has run, whyfail exits with its code even when the
 // explanation fails, so wrapping a command never changes what scripts see.
-func explainCommand(ctx context.Context, cfg config.Config, d deps) int {
-	res, err := capture.Run(cfg.Command, d.stdin, d.stdout, d.stderr, capture.DefaultLimits)
+// In JSON mode the command's output goes to stderr, keeping stdout for the
+// JSON object.
+func explainCommand(ctx context.Context, cfg config.Config, d deps) outcome {
+	stdout := d.stdout
+	if cfg.JSON {
+		stdout = d.stderr
+	}
+	res, err := capture.Run(cfg.Command, d.stdin, stdout, d.stderr, capture.DefaultLimits)
 	switch {
 	case errors.Is(err, capture.ErrNotFound):
-		fmt.Fprintf(d.stderr, "whyfail: command not found: %s\n", render.Sanitize(cfg.Command[0]))
-		return exitNotFound
+		return outcome{exit: exitNotFound, fail: &failure{code: "command_not_found", message: "command not found: " + render.Sanitize(cfg.Command[0])}}
+	case errors.Is(err, capture.ErrCannotRun):
+		return outcome{exit: exitCannotRun, fail: &failure{code: "cannot_run", message: render.Sanitize(err.Error())}}
 	case err != nil:
-		fmt.Fprintf(d.stderr, "whyfail: %s\n", render.Sanitize(err.Error()))
-		if errors.Is(err, capture.ErrCannotRun) {
-			return exitCannotRun
-		}
-		return exitFailure
+		return outcome{exit: exitFailure, fail: &failure{code: "internal", message: render.Sanitize(err.Error())}}
 	}
 
+	command := redact.Redact(formatCommand(cfg.Command)).Text
+	ran := outcome{exit: res.ExitCode, command: &command, childExit: &res.ExitCode}
 	switch {
 	case ctx.Err() != nil:
 		// Interrupted: the user already knows why the command stopped.
-		return res.ExitCode
+		ran.fail = &failure{code: "interrupted", message: "interrupted", quiet: true}
+		return ran
 	case res.ExitCode == 0:
-		return exitOK
+		return ran
 	case res.Tail.Text == "":
-		fmt.Fprintf(d.stderr, "whyfail: the command exited with code %d without any output to explain.\n", res.ExitCode)
-		return res.ExitCode
+		ran.fail = &failure{code: "no_output", message: fmt.Sprintf("the command exited with code %d without any output to explain.", res.ExitCode)}
+		return ran
 	}
 
-	explain(ctx, cfg, d, prompt.Failure{
+	o := explain(ctx, cfg, d, prompt.Failure{
 		Command:   formatCommand(cfg.Command),
 		ExitCode:  res.ExitCode,
 		Output:    res.Tail.Text,
 		Truncated: res.Tail.Truncated,
 	})
-	return res.ExitCode
+	o.exit, o.command, o.childExit = res.ExitCode, &command, &res.ExitCode
+	return o
 }
 
 // formatCommand joins argv for display, quoting arguments that would not
@@ -267,9 +341,9 @@ func formatCommand(argv []string) string {
 	return strings.Join(parts, " ")
 }
 
-// explain redacts f, asks the model and prints the answer. It returns exitOK,
-// or the code for the error it reported.
-func explain(ctx context.Context, cfg config.Config, d deps, f prompt.Failure) int {
+// explain redacts f and asks the model. The outcome holds the answer, or the
+// failure with its exit code.
+func explain(ctx context.Context, cfg config.Config, d deps, f prompt.Failure) outcome {
 	command, output := redact.Redact(f.Command), redact.Redact(f.Output)
 	reportRedaction(d.stderr, command, output)
 	f.Command, f.Output = command.Text, output.Text
@@ -284,20 +358,15 @@ func explain(ctx context.Context, cfg config.Config, d deps, f prompt.Failure) i
 	defer cancel()
 
 	stopProgress := func() {}
-	if d.stderrIsTerminal {
+	if d.stderrIsTerminal && !cfg.JSON {
 		stopProgress = render.StartProgress(d.stderr, "Asking "+cfg.Model, progressInterval)
 	}
 	answer, err := d.newExplainer(cfg).Explain(ctx, req)
 	stopProgress()
 	if err != nil {
-		return reportExplainError(d.stderr, cfg, err)
+		return explainFailure(cfg, err)
 	}
-
-	if err := render.Text(d.stdout, answer, apply.Warnings); err != nil {
-		fmt.Fprintf(d.stderr, "whyfail: write output: %v\n", err)
-		return exitFailure
-	}
-	return exitOK
+	return outcome{exit: exitOK, answer: &answer}
 }
 
 // reportRedaction tells the user that secrets were removed, naming only their
@@ -324,25 +393,26 @@ func reportRedaction(w io.Writer, results ...redact.Result) {
 	fmt.Fprintf(w, "whyfail: redacted %d %s (%s) before asking the model.\n", n, noun, strings.Join(kinds, ", "))
 }
 
-// reportExplainError prints an actionable message for err. Messages never
-// include the captured output.
-func reportExplainError(w io.Writer, cfg config.Config, err error) int {
+// explainFailure maps an Explainer error to an actionable failure. Messages
+// never include the captured output.
+func explainFailure(cfg config.Config, err error) outcome {
+	f := func(code, message string) outcome {
+		return outcome{exit: exitFailure, fail: &failure{code: code, message: message}}
+	}
 	switch {
 	case errors.Is(err, context.Canceled):
-		fmt.Fprintln(w, "whyfail: interrupted")
-		return exitInterrupted
+		return outcome{exit: exitInterrupted, fail: &failure{code: "interrupted", message: "interrupted"}}
 	case errors.Is(err, netguard.ErrNotLoopback):
-		fmt.Fprintln(w, "whyfail: refused to connect to a non-loopback address; the server may have redirected the request. Pass --allow-remote to allow it.")
+		return f("host_refused", "refused to connect to a non-loopback address; the server may have redirected the request. Pass --allow-remote to allow it.")
 	case errors.Is(err, llm.ErrUnreachable):
-		fmt.Fprintf(w, "whyfail: cannot reach Ollama at %s. Start it with `ollama serve` (or the Ollama app) and try again.\n", cfg.Host)
+		return f("ollama_unreachable", fmt.Sprintf("cannot reach Ollama at %s. Start it with `ollama serve` (or the Ollama app) and try again.", cfg.Host))
 	case errors.Is(err, llm.ErrModelNotFound):
-		fmt.Fprintf(w, "whyfail: model %s is not installed. Install it with:\n  ollama pull %s\n", cfg.Model, cfg.Model)
+		return f("model_not_found", fmt.Sprintf("model %s is not installed. Install it with:\n  ollama pull %s", cfg.Model, cfg.Model))
 	case errors.Is(err, llm.ErrTimeout):
-		fmt.Fprintf(w, "whyfail: no answer within %v. The first request can be slow while the model loads; try again or raise -timeout.\n", cfg.Timeout)
+		return f("timeout", fmt.Sprintf("no answer within %v. The first request can be slow while the model loads; try again or raise -timeout.", cfg.Timeout))
 	case errors.Is(err, llm.ErrMalformedResponse):
-		fmt.Fprintln(w, "whyfail: the model gave an unusable answer. Try again, or pick another model with -model.")
+		return f("malformed_answer", "the model gave an unusable answer. Try again, or pick another model with -model.")
 	default:
-		fmt.Fprintf(w, "whyfail: %s\n", render.Sanitize(err.Error()))
+		return f("internal", render.Sanitize(err.Error()))
 	}
-	return exitFailure
 }
