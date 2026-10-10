@@ -117,3 +117,35 @@ func TestBuildSystemPromptTreatsCommandAsUntrusted(t *testing.T) {
 		t.Error("System prompt does not mention the <command> block")
 	}
 }
+
+func TestBuildStartsWithTheEnvironment(t *testing.T) {
+	req := Build(Failure{Environment: "Linux (Ubuntu 24.04.1 LTS), amd64, shell bash", Command: "make", ExitCode: 2, Output: "x"})
+
+	if !strings.HasPrefix(req.User, "Environment: Linux (Ubuntu 24.04.1 LTS), amd64, shell bash.\n<command>") {
+		t.Errorf("User = %q", req.User)
+	}
+}
+
+func TestBuildAsksForTheShellsSyntax(t *testing.T) {
+	req := Build(Failure{Environment: "Windows, amd64, shell PowerShell", Shell: "PowerShell", Output: "x"})
+
+	if !strings.Contains(req.User, "shell PowerShell.\nWrite every fix in PowerShell syntax.\n<output>") {
+		t.Errorf("User = %q", req.User)
+	}
+}
+
+func TestBuildOmitsEmptyEnvironment(t *testing.T) {
+	if req := Build(Failure{Output: "x"}); strings.Contains(req.User, "Environment:") || strings.Contains(req.User, "syntax") {
+		t.Errorf("User = %q", req.User)
+	}
+}
+
+func TestBuildSystemPromptAsksForFixesInTheUsersShell(t *testing.T) {
+	system := Build(Failure{Output: "x"}).System
+
+	for _, want := range []string{"Environment", "shell"} {
+		if !strings.Contains(system, want) {
+			t.Errorf("System prompt lacks %q", want)
+		}
+	}
+}

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mbarboss/whyfail/internal/sysinfo"
 )
 
 func env(vars map[string]string) func(string) string {
@@ -232,7 +234,7 @@ func TestParseHelpListsFlagsAndEnvironment(t *testing.T) {
 	if !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("err = %v, want flag.ErrHelp", err)
 	}
-	for _, want := range []string{"2>&1 | whyfail", "whyfail [flags] -- <command>", "-model", "-host", "-timeout", "-allow-remote", "-version", "WHYFAIL_MODEL", "OLLAMA_HOST", "WHYFAIL_TIMEOUT"} {
+	for _, want := range []string{"2>&1 | whyfail", "whyfail [flags] -- <command>", "-model", "-host", "-timeout", "-allow-remote", "-shell", "-version", "WHYFAIL_MODEL", "OLLAMA_HOST", "WHYFAIL_TIMEOUT", "WHYFAIL_SHELL"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("help does not mention %s", want)
 		}
@@ -244,5 +246,47 @@ func TestParseUnknownFlagIsNotErrInvalid(t *testing.T) {
 
 	if err == nil || errors.Is(err, ErrInvalid) || errors.Is(err, flag.ErrHelp) {
 		t.Errorf("err = %v, want a plain flag error", err)
+	}
+}
+
+func TestParseShellOverride(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		env  map[string]string
+		want sysinfo.Shell
+	}{
+		{"not set", nil, nil, ""},
+		{"flag", []string{"-shell", "fish"}, nil, sysinfo.Fish},
+		{"env", nil, map[string]string{"WHYFAIL_SHELL": "pwsh"}, sysinfo.PowerShell},
+		{"flag beats env", []string{"-shell", "cmd"}, map[string]string{"WHYFAIL_SHELL": "zsh"}, sysinfo.Cmd},
+		{"case and spaces", []string{"-shell", " Bash "}, nil, sysinfo.Bash},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := Parse(tt.args, env(tt.env), &bytes.Buffer{})
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+
+			if cfg.Shell != tt.want {
+				t.Errorf("Shell = %q, want %q", cfg.Shell, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseRejectsUnknownShell(t *testing.T) {
+	for _, v := range []string{"tcsh", "/bin/bash", "bash.exe", "unknown", "bash; rm -rf ~"} {
+		t.Run(v, func(t *testing.T) {
+			_, err := Parse([]string{"-shell", v}, env(nil), &bytes.Buffer{})
+
+			if !errors.Is(err, ErrInvalid) {
+				t.Fatalf("err = %v, want ErrInvalid", err)
+			}
+			if strings.Contains(err.Error(), v) {
+				t.Errorf("error echoes the rejected value: %v", err)
+			}
+		})
 	}
 }

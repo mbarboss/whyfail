@@ -113,6 +113,13 @@ whyfail reads its settings from flags or environment variables (flags win). See
 | `--host` | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama server; the captured output is sent here |
 | `--allow-remote` | (none) | off | Allow a host that is not on this machine |
 | `--timeout` | `WHYFAIL_TIMEOUT` | `2m` | Maximum time to wait for an answer (1s to 10m) |
+| `--shell` | `WHYFAIL_SHELL` | detected | Shell to write fixes for: `bash`, `zsh`, `fish`, `powershell` (or `pwsh`), `cmd` |
+
+Along with the output, the model is told your OS, CPU architecture and shell, plus the
+distribution name from `/etc/os-release` on Linux, so fixes use the right package manager
+and syntax. The shell is the program that started whyfail; when that is not a shell (for
+example `make` or `npm`), whyfail falls back to `$SHELL`, and otherwise reports it as
+unknown. Set `--shell` when the detection is wrong.
 
 `OLLAMA_HOST` accepts the same forms as the Ollama CLI, such as `127.0.0.1:11500`.
 `0.0.0.0`, often set so the Ollama server listens on every interface, means this machine.
