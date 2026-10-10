@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -50,6 +51,9 @@ type Config struct {
 	Host        *url.URL
 	Timeout     time.Duration
 	ShowVersion bool
+	// AllowRemote permits a host that is not loopback. It is a flag only, so
+	// sending output off the machine is always an explicit choice.
+	AllowRemote bool
 	// Args holds the positional arguments left after the flags.
 	Args []string
 }
@@ -65,13 +69,14 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (Config,
 	model := fs.String("model", envOr(getenv, EnvModel, DefaultModel), "Ollama model to use (env "+EnvModel+")")
 	host := fs.String("host", envOr(getenv, EnvHost, DefaultHost), "Ollama server URL (env "+EnvHost+")")
 	timeout := fs.String("timeout", envOr(getenv, EnvTimeout, DefaultTimeout.String()), "maximum time to wait for an answer (env "+EnvTimeout+")")
+	allowRemote := fs.Bool("allow-remote", false, "allow an Ollama host that is not on this machine; command output is then sent over the network")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
 
-	cfg := Config{ShowVersion: *showVersion, Args: fs.Args()}
+	cfg := Config{ShowVersion: *showVersion, AllowRemote: *allowRemote, Args: fs.Args()}
 	var err error
 	if cfg.Model, err = parseModel(*model); err != nil {
 		return Config{}, err
@@ -136,7 +141,29 @@ func parseHost(s string) (*url.URL, error) {
 			return nil, bad
 		}
 	}
-	return &url.URL{Scheme: u.Scheme, Host: u.Host}, nil
+	return &url.URL{Scheme: u.Scheme, Host: localizeUnspecified(u)}, nil
+}
+
+// localizeUnspecified maps 0.0.0.0 and :: to the loopback address of the same
+// family. Users set OLLAMA_HOST=0.0.0.0 so the Ollama server listens on every
+// interface; as a destination it means this machine, and Windows cannot
+// connect to the unspecified address at all.
+func localizeUnspecified(u *url.URL) string {
+	ip, err := netip.ParseAddr(u.Hostname())
+	if err != nil || !ip.IsUnspecified() {
+		return u.Host
+	}
+	loopback := "::1"
+	if ip.Is4() {
+		loopback = "127.0.0.1"
+	}
+	if u.Port() != "" {
+		return net.JoinHostPort(loopback, u.Port())
+	}
+	if ip.Is4() {
+		return loopback
+	}
+	return "[" + loopback + "]"
 }
 
 func parseTimeout(s string) (time.Duration, error) {

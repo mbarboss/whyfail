@@ -58,7 +58,7 @@ it only when it fails.
 |---|---|
 | 0 | The failure was explained |
 | 1 | Runtime error: Ollama unreachable, model missing, timeout, unusable answer |
-| 2 | Usage or configuration error, or nothing to explain |
+| 2 | Usage or configuration error, non-loopback host without `--allow-remote`, or nothing to explain |
 | 130 | Interrupted |
 
 ## Requirements
@@ -90,10 +90,18 @@ whyfail reads its settings from flags or environment variables (flags win). See
 |---|---|---|---|
 | `--model` | `WHYFAIL_MODEL` | `gemma4:e4b` | Ollama model used for explanations |
 | `--host` | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama server; the captured output is sent here |
+| `--allow-remote` | (none) | off | Allow a host that is not on this machine |
 | `--timeout` | `WHYFAIL_TIMEOUT` | `2m` | Maximum time to wait for an answer (1s to 10m) |
 
-`OLLAMA_HOST` accepts the same forms as the Ollama CLI, such as `127.0.0.1:11500`. whyfail
-ignores `HTTP_PROXY` and `HTTPS_PROXY`, so the output only goes to that host.
+`OLLAMA_HOST` accepts the same forms as the Ollama CLI, such as `127.0.0.1:11500`.
+`0.0.0.0`, often set so the Ollama server listens on every interface, means this machine.
+
+whyfail only talks to Ollama on this machine. A host that is not a loopback address, or a
+name that resolves to anything other than loopback, is refused with exit code 2. The check
+runs again on every connection, so DNS changes and redirects cannot send the output
+elsewhere. To use Ollama on another machine, pass `--allow-remote` on each run; there is
+no environment variable for it, so the choice is always explicit, and whyfail prints a
+warning every time. whyfail also ignores `HTTP_PROXY` and `HTTPS_PROXY`.
 
 ## Development
 

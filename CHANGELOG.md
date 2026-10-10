@@ -19,6 +19,9 @@ All notable changes to this project are documented here. The format follows
 - Secret redaction before prompting: private keys, URL credentials, authorization
   headers, common token formats and `password=`-style values are replaced by typed
   placeholders, with a notice on stderr listing the kinds removed.
+- Ollama hosts that are not on this machine are refused unless `--allow-remote` is passed;
+  every connection is checked, and `--allow-remote` prints a warning on each run.
+  `OLLAMA_HOST=0.0.0.0` is treated as this machine.
 - Model output is stripped of terminal escape sequences and control characters before it
   is printed, and only the tail of the command output is sent to the model.
 
