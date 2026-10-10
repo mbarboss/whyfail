@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/mbarboss/whyfail/internal/apply"
@@ -19,6 +20,7 @@ import (
 	"github.com/mbarboss/whyfail/internal/llm"
 	"github.com/mbarboss/whyfail/internal/llm/ollama"
 	"github.com/mbarboss/whyfail/internal/prompt"
+	"github.com/mbarboss/whyfail/internal/redact"
 	"github.com/mbarboss/whyfail/internal/render"
 )
 
@@ -117,7 +119,10 @@ func explainPipe(ctx context.Context, cfg config.Config, d deps) int {
 		return exitFailure
 	}
 
-	req := prompt.Build(prompt.Failure{Output: tail.Text, Truncated: tail.Truncated})
+	redacted := redact.Redact(tail.Text)
+	reportRedaction(d.stderr, redacted)
+
+	req := prompt.Build(prompt.Failure{Output: redacted.Text, Truncated: tail.Truncated})
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 
@@ -136,6 +141,24 @@ func explainPipe(ctx context.Context, cfg config.Config, d deps) int {
 		return exitFailure
 	}
 	return exitOK
+}
+
+// reportRedaction tells the user that secrets were removed, naming only their
+// kinds.
+func reportRedaction(w io.Writer, r redact.Result) {
+	n := r.Total()
+	if n == 0 {
+		return
+	}
+	noun := "secrets"
+	if n == 1 {
+		noun = "secret"
+	}
+	kinds := make([]string, 0, len(r.Counts))
+	for _, k := range r.Kinds() {
+		kinds = append(kinds, string(k))
+	}
+	fmt.Fprintf(w, "whyfail: redacted %d %s (%s) before asking the model.\n", n, noun, strings.Join(kinds, ", "))
 }
 
 // reportExplainError prints an actionable message for err. Messages never
