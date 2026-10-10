@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mbarboss/whyfail/internal/config"
+	"github.com/mbarboss/whyfail/internal/doctor"
 	"github.com/mbarboss/whyfail/internal/llm"
 	"github.com/mbarboss/whyfail/internal/netguard"
 	"github.com/mbarboss/whyfail/internal/sysinfo"
@@ -40,15 +41,29 @@ func goodAnswer() llm.Explanation {
 	}
 }
 
+type fakeServer struct {
+	version  string
+	err      error
+	hasModel bool
+}
+
+func (f *fakeServer) Version(context.Context) (string, error) { return f.version, f.err }
+func (f *fakeServer) HasModel(context.Context) (bool, error)  { return f.hasModel, nil }
+
 type harness struct {
 	stdout, stderr bytes.Buffer
 	fake           *fakeExplainer
+	server         *fakeServer
 	cfg            config.Config
 	env            map[string]string
 }
 
 func newHarness(stdin string) (*harness, deps) {
-	h := &harness{fake: &fakeExplainer{answer: goodAnswer()}, env: map[string]string{}}
+	h := &harness{
+		fake:   &fakeExplainer{answer: goodAnswer()},
+		server: &fakeServer{version: "0.40.1", hasModel: true},
+		env:    map[string]string{},
+	}
 	d := deps{
 		stdin:  strings.NewReader(stdin),
 		stdout: &h.stdout,
@@ -58,6 +73,11 @@ func newHarness(stdin string) (*harness, deps) {
 			h.cfg = cfg
 			return h.fake
 		},
+		newServer: func(cfg config.Config) doctor.Server {
+			h.cfg = cfg
+			return h.server
+		},
+		lookPath: func(string) (string, error) { return "/usr/local/bin/ollama", nil },
 		probe: sysinfo.Probe{
 			GOOS:       "linux",
 			GOARCH:     "arm64",

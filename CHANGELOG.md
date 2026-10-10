@@ -30,6 +30,9 @@ All notable changes to this project are documented here. The format follows
 - The prompt names the OS, CPU architecture, Linux distribution and shell, and asks for
   fixes in that shell's syntax. The shell is detected from the parent process (falling
   back to `$SHELL`) and can be set with `--shell` or `WHYFAIL_SHELL`.
+- `whyfail doctor` checks that the Ollama host is on this machine, that Ollama 0.9.0 or
+  later is running and that the model is installed, with an install, start, upgrade or
+  `ollama pull` fix for each failed check. Exit code 0 when all checks pass, 1 otherwise.
 - Model output is stripped of terminal escape sequences and control characters before it
   is printed, and only the tail of the command output is sent to the model.
 

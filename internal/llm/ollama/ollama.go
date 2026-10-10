@@ -1,4 +1,5 @@
-// Package ollama implements llm.Explainer over the Ollama REST API.
+// Package ollama implements llm.Explainer, and the server checks used by
+// whyfail doctor, over the Ollama REST API.
 package ollama
 
 import (
@@ -23,17 +24,17 @@ const (
 	maxErrorBytes = 200
 )
 
-// Client calls the Ollama /api/chat endpoint.
+// Client calls the Ollama REST API.
 type Client struct {
-	endpoint string
-	model    string
-	http     *http.Client
+	base  *url.URL
+	model string
+	http  *http.Client
 }
 
 // New returns a Client for the server at base using model. Request deadlines
-// come from the context passed to Explain.
+// come from the context passed to each method.
 func New(base *url.URL, model string, hc *http.Client) *Client {
-	return &Client{endpoint: base.JoinPath("api", "chat").String(), model: model, http: hc}
+	return &Client{base: base, model: model, http: hc}
 }
 
 type message struct {
@@ -77,30 +78,87 @@ func (c *Client) Explain(ctx context.Context, req llm.Request) (llm.Explanation,
 		return llm.Explanation{}, fmt.Errorf("ollama: encode request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
+	status, raw, err := c.do(ctx, http.MethodPost, "chat", body)
 	if err != nil {
-		return llm.Explanation{}, fmt.Errorf("ollama: build request: %w", err)
+		return llm.Explanation{}, err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	if status != http.StatusOK {
+		return llm.Explanation{}, statusError(status, raw)
+	}
+	return decode(raw)
+}
 
-	resp, err := c.http.Do(httpReq)
+// Version returns the server version reported by /api/version.
+func (c *Client) Version(ctx context.Context) (string, error) {
+	status, raw, err := c.do(ctx, http.MethodGet, "version", nil)
 	if err != nil {
-		return llm.Explanation{}, transportError(ctx, err)
+		return "", err
+	}
+	if status != http.StatusOK {
+		return "", statusError(status, raw)
+	}
+	var v struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return "", fmt.Errorf("ollama: %w: decode version: %w", llm.ErrMalformedResponse, err)
+	}
+	if v.Version == "" {
+		return "", fmt.Errorf("ollama: %w: empty version", llm.ErrMalformedResponse)
+	}
+	return v.Version, nil
+}
+
+// HasModel reports whether the configured model is installed. /api/show
+// resolves tags and aliases the same way /api/chat does.
+func (c *Client) HasModel(ctx context.Context) (bool, error) {
+	body, err := json.Marshal(map[string]string{"model": c.model})
+	if err != nil {
+		return false, fmt.Errorf("ollama: encode request: %w", err)
+	}
+	status, raw, err := c.do(ctx, http.MethodPost, "show", body)
+	switch {
+	case err != nil:
+		return false, err
+	case status == http.StatusOK:
+		return true, nil
+	case status == http.StatusNotFound:
+		return false, nil
+	default:
+		return false, statusError(status, raw)
+	}
+}
+
+// do sends a request to /api/<path> and returns the status and the body,
+// capped at maxResponseBytes.
+func (c *Client) do(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
+	var r io.Reader
+	if body != nil {
+		r = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.base.JoinPath("api", path).String(), r)
+	if err != nil {
+		return 0, nil, fmt.Errorf("ollama: build request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, nil, transportError(ctx, err)
 	}
 	// The body is fully read below; a close error cannot change the outcome.
 	defer func() { _ = resp.Body.Close() }()
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return llm.Explanation{}, transportError(ctx, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return llm.Explanation{}, statusError(resp.StatusCode, raw)
+		return 0, nil, transportError(ctx, err)
 	}
 	if len(raw) > maxResponseBytes {
-		return llm.Explanation{}, fmt.Errorf("ollama: %w: response larger than %d bytes", llm.ErrMalformedResponse, maxResponseBytes)
+		return 0, nil, fmt.Errorf("ollama: %w: response larger than %d bytes", llm.ErrMalformedResponse, maxResponseBytes)
 	}
-	return decode(raw)
+	return resp.StatusCode, raw, nil
 }
 
 // transportError maps a failed exchange to the llm errors. Cancellation keeps

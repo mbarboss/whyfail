@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/mbarboss/whyfail/internal/apply"
 	"github.com/mbarboss/whyfail/internal/capture"
 	"github.com/mbarboss/whyfail/internal/config"
+	"github.com/mbarboss/whyfail/internal/doctor"
 	"github.com/mbarboss/whyfail/internal/llm"
 	"github.com/mbarboss/whyfail/internal/llm/ollama"
 	"github.com/mbarboss/whyfail/internal/netguard"
@@ -60,6 +62,8 @@ type deps struct {
 	newExplainer     func(config.Config) llm.Explainer
 	resolver         netguard.Resolver
 	probe            sysinfo.Probe
+	newServer        func(config.Config) doctor.Server
+	lookPath         func(string) (string, error)
 }
 
 func main() {
@@ -71,7 +75,9 @@ func main() {
 		getenv:           os.Getenv,
 		stdinIsTerminal:  isTerminal(os.Stdin),
 		stderrIsTerminal: isTerminal(os.Stderr),
-		newExplainer:     newOllama,
+		newExplainer:     func(cfg config.Config) llm.Explainer { return newOllama(cfg) },
+		newServer:        func(cfg config.Config) doctor.Server { return newOllama(cfg) },
+		lookPath:         exec.LookPath,
 		resolver:         net.DefaultResolver,
 		probe:            sysinfo.System(os.Getenv),
 	})
@@ -82,7 +88,7 @@ func main() {
 // newOllama builds the production Explainer. Proxies are disabled so the
 // captured output only ever goes to the configured host, and unless remote
 // hosts are allowed every connection must reach a loopback address.
-func newOllama(cfg config.Config) llm.Explainer {
+func newOllama(cfg config.Config) *ollama.Client {
 	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
 	if !cfg.AllowRemote {
 		dialer.Control = netguard.Control
@@ -116,6 +122,9 @@ func run(ctx context.Context, args []string, d deps) int {
 		fmt.Fprintf(d.stdout, "whyfail %s\n", version)
 		return exitOK
 	}
+	if cfg.Doctor {
+		return runDoctor(ctx, cfg, d)
+	}
 	if len(cfg.Command) > 0 {
 		// Check the host first so a refused host never costs a full run.
 		if code := checkHost(ctx, cfg, d); code != exitOK {
@@ -136,6 +145,37 @@ func run(ctx context.Context, args []string, d deps) int {
 		return code
 	}
 	return explainPipe(ctx, cfg, d)
+}
+
+// runDoctor checks that Ollama and the model are ready. A refused host is a
+// failed check here, not a usage error.
+func runDoctor(ctx context.Context, cfg config.Config, d deps) int {
+	results := doctor.Run(ctx, doctor.Deps{
+		Host:        cfg.Host,
+		Model:       cfg.Model,
+		AllowRemote: cfg.AllowRemote,
+		GOOS:        d.probe.GOOS,
+		Environment: sysinfo.Detect(d.probe, cfg.Shell).String(),
+		CheckHost: func(ctx context.Context) error {
+			ctx, cancel := context.WithTimeout(ctx, resolveTimeout)
+			defer cancel()
+			return netguard.CheckHost(ctx, d.resolver, cfg.Host.Hostname())
+		},
+		LookPath: d.lookPath,
+		Server:   d.newServer(cfg),
+	})
+	if ctx.Err() != nil {
+		fmt.Fprintln(d.stderr, "whyfail: interrupted")
+		return exitInterrupted
+	}
+	if err := render.Doctor(d.stdout, results); err != nil {
+		fmt.Fprintf(d.stderr, "whyfail: write output: %v\n", err)
+		return exitFailure
+	}
+	if !doctor.Passed(results) {
+		return exitFailure
+	}
+	return exitOK
 }
 
 // checkHost refuses a host that is not on this machine unless --allow-remote

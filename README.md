@@ -84,7 +84,7 @@ piping output that you know holds unusual credentials.
 
 ## Requirements
 
-- [Ollama](https://ollama.com/download) running locally, with a model pulled.
+- [Ollama](https://ollama.com/download) 0.9.0 or later running locally, with a model pulled.
 
 | OS | Install Ollama |
 |---|---|
@@ -97,6 +97,21 @@ Then pull the default model (6.6 GB download; runs well on a GPU with 8 GB of VR
 ```sh
 ollama pull gemma4:e4b
 ```
+
+Run `whyfail doctor` to check the setup. It checks that the Ollama host is on this
+machine, that Ollama is running and recent enough, and that the model is installed, and
+prints a fix for each failed check:
+
+```text
+ok    Ollama host is on this machine (http://127.0.0.1:11434)
+ok    Ollama 0.40.2 is running
+FAIL  Model gemma4:e4b is not installed
+      Fix: ollama pull gemma4:e4b
+info  Environment: Linux (Ubuntu 24.04.1 LTS), amd64, shell bash
+```
+
+It exits with 0 when every check passes and 1 otherwise. Flags such as `--model` and
+`--host` apply to it too.
 
 On machines with less memory, `qwen3.5:4b` (3.3 GB) is a lighter alternative; select it
 with `--model qwen3.5:4b` or `WHYFAIL_MODEL=qwen3.5:4b`. The first request after Ollama
