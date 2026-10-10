@@ -55,6 +55,11 @@ func Run(argv []string, stdin io.Reader, stdout, stderr io.Writer, l Limits) (Re
 	// The tail comes first so it still sees the output if the terminal fails.
 	cmd.Stdout = io.MultiWriter(tail, stdout)
 	cmd.Stderr = io.MultiWriter(tail, stderr)
+	if sameWriter(stdout, stderr) {
+		// os/exec serializes writes only when Stdout and Stderr are the same
+		// value; separate MultiWriters would write to one sink concurrently.
+		cmd.Stderr = cmd.Stdout
+	}
 	cmd.WaitDelay = waitDelay
 	if err := cmd.Start(); err != nil {
 		return Result{}, startError(err)
@@ -70,6 +75,18 @@ func Run(argv []string, stdin io.Reader, stdout, stderr io.Writer, l Limits) (Re
 		return res, fmt.Errorf("capture: copy command output: %w", err)
 	}
 	return res, nil
+}
+
+// sameWriter reports whether a and b are the same writer. Comparing
+// interfaces panics when the dynamic type is not comparable; such writers are
+// treated as different, as os/exec does.
+func sameWriter(a, b io.Writer) (same bool) {
+	defer func() {
+		if recover() != nil {
+			same = false
+		}
+	}()
+	return a == b
 }
 
 func startError(err error) error {

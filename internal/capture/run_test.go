@@ -40,6 +40,12 @@ func child(actions []string) int {
 			for i := 1; i <= n; i++ {
 				fmt.Printf("line %d\n", i)
 			}
+		case "mixed":
+			n, _ := strconv.Atoi(arg)
+			for i := 1; i <= n; i++ {
+				fmt.Printf("out %d\n", i)
+				fmt.Fprintf(os.Stderr, "err %d\n", i)
+			}
 		case "stdin":
 			_, _ = io.Copy(os.Stdout, os.Stdin)
 		case "sigint":
@@ -124,6 +130,19 @@ func TestRunStreamsEverythingButKeepsOnlyTheTail(t *testing.T) {
 	}
 	if got.Tail.Text != "line 498\nline 499\nline 500\n" || !got.Tail.Truncated {
 		t.Errorf("Tail = %+v", got.Tail)
+	}
+}
+
+func TestRunSerializesWritesToASharedWriter(t *testing.T) {
+	var out bytes.Buffer
+
+	_, err := Run(childArgv(t, "mixed:5000"), strings.NewReader(""), &out, &out, DefaultLimits)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if n := strings.Count(out.String(), "\n"); n != 10000 {
+		t.Errorf("shared writer got %d lines, want 10000", n)
 	}
 }
 
@@ -215,5 +234,22 @@ func TestRunRejectsBadArguments(t *testing.T) {
 				t.Errorf("err = %v, want an argument error", err)
 			}
 		})
+	}
+}
+
+// sliceWriter is not comparable, so comparing two of them in an interface
+// panics.
+type sliceWriter []byte
+
+func (sliceWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+func TestRunAcceptsWritersThatAreNotComparable(t *testing.T) {
+	got, err := Run(childArgv(t, "out:x", "err:y", "exit:1"), strings.NewReader(""), sliceWriter(nil), sliceWriter(nil), DefaultLimits)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if got.ExitCode != 1 || got.Tail.Text == "" {
+		t.Errorf("got %+v", got)
 	}
 }

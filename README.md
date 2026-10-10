@@ -70,6 +70,55 @@ piping output that you know holds unusual credentials.
   example, Ollama is not running), so wrapping a command does not change what scripts see.
   A command killed by a signal is reported as 128 plus the signal number, like a shell does.
 
+### JSON output
+
+With `--json`, whyfail prints exactly one JSON object on one line to stdout, and nothing
+else goes to stdout. There is no progress indicator. In wrapper mode the command's own
+stdout and stderr go to stderr, so `whyfail --json -- make > result.json` captures only the
+JSON. Notices for humans (redacted secrets, `--allow-remote`) still go to stderr.
+
+```json
+{"schemaVersion":1,"model":"gemma4:e4b","command":"make -j4","exitCode":2,
+ "cause":"...","explanation":"...",
+ "fixes":[{"command":"sudo apt install libssl-dev","description":"...",
+           "warnings":["runs with administrator privileges"]}]}
+```
+
+- `command` and `exitCode` are `null` in pipe mode. `command` is redacted.
+- When the wrapped command succeeds, the object has `exitCode` 0 and no `cause`.
+- `warnings` is always an array, empty when the fix looks safe.
+- Text from the model is stripped of escape and control characters, as in text mode.
+- `schemaVersion` changes only when a field is removed or changes meaning.
+
+Errors come in the same object, with an `error` field instead of the answer:
+
+```json
+{"schemaVersion":1,"model":"gemma4:e4b","command":null,"exitCode":null,
+ "error":{"code":"ollama_unreachable","message":"cannot reach Ollama at ..."}}
+```
+
+| `error.code` | Meaning |
+|---|---|
+| `usage` | Bad flags or arguments, or nothing piped in |
+| `invalid_config` | A flag or environment value failed validation |
+| `empty_input` | The piped input was empty |
+| `host_refused` | The Ollama host is not on this machine (see `--allow-remote`) |
+| `host_unresolved` | The Ollama host name could not be resolved |
+| `ollama_unreachable` | Ollama is not running at the host |
+| `model_not_found` | The model is not installed |
+| `timeout` | No answer within `--timeout` |
+| `malformed_answer` | The model's answer was unusable |
+| `interrupted` | Ctrl+C |
+| `command_not_found` | Wrapper mode: the command does not exist |
+| `cannot_run` | Wrapper mode: the command could not be started |
+| `no_output` | Wrapper mode: the command failed without printing anything |
+| `internal` | Anything else |
+
+Exit codes are the same as in text mode. A flag error (such as an unknown flag) is reported
+as JSON only when `--json` comes before it on the command line. `--version` always prints
+text. `whyfail --json doctor` prints
+`{"schemaVersion":1,"passed":false,"checks":[{"status":"fail","title":"...","fix":"..."}]}`.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -128,6 +177,7 @@ whyfail reads its settings from flags or environment variables (flags win). See
 | `--host` | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama server; the captured output is sent here |
 | `--allow-remote` | (none) | off | Allow a host that is not on this machine |
 | `--timeout` | `WHYFAIL_TIMEOUT` | `2m` | Maximum time to wait for an answer (1s to 10m) |
+| `--json` | (none) | off | Print one JSON object instead of text (see [JSON output](#json-output)) |
 | `--shell` | `WHYFAIL_SHELL` | detected | Shell to write fixes for: `bash`, `zsh`, `fish`, `powershell` (or `pwsh`), `cmd` |
 
 Along with the output, the model is told your OS, CPU architecture and shell, plus the
