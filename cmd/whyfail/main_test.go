@@ -242,3 +242,47 @@ func TestRunNeverEchoesCapturedOutputOnError(t *testing.T) {
 		t.Errorf("stderr echoes captured output: %q", h.stderr.String())
 	}
 }
+
+func TestRunRedactsSecretsBeforePrompting(t *testing.T) {
+	secret := "hunter2-" + strings.Repeat("x", 8)
+	h, d := newHarness("psql: password=" + secret + "\nconnect postgres://app:" + secret + "@db:5432/app failed\n")
+
+	code := run(context.Background(), nil, d)
+
+	if code != exitOK {
+		t.Fatalf("exit code = %d, stderr = %q", code, h.stderr.String())
+	}
+	if strings.Contains(h.fake.got.User, secret) {
+		t.Errorf("prompt contains the secret: %q", h.fake.got.User)
+	}
+	if !strings.Contains(h.fake.got.User, "[REDACTED:credential]") {
+		t.Errorf("prompt lacks the placeholder: %q", h.fake.got.User)
+	}
+	want := "whyfail: redacted 2 secrets (credential, url-credentials) before asking the model.\n"
+	if !strings.Contains(h.stderr.String(), want) {
+		t.Errorf("stderr = %q, want it to contain %q", h.stderr.String(), want)
+	}
+	if strings.Contains(h.stderr.String()+h.stdout.String(), secret) {
+		t.Error("secret echoed to the terminal")
+	}
+}
+
+func TestRunRedactionNoticeSingular(t *testing.T) {
+	h, d := newHarness("password=abc\n")
+
+	run(context.Background(), nil, d)
+
+	if !strings.Contains(h.stderr.String(), "redacted 1 secret (credential) before") {
+		t.Errorf("stderr = %q", h.stderr.String())
+	}
+}
+
+func TestRunNoRedactionNoticeWithoutSecrets(t *testing.T) {
+	h, d := newHarness("make: *** [all] Error 1\n")
+
+	run(context.Background(), nil, d)
+
+	if strings.Contains(h.stderr.String(), "redacted") {
+		t.Errorf("unexpected notice: %q", h.stderr.String())
+	}
+}

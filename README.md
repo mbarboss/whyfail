@@ -36,7 +36,18 @@ before you run them. Commands that use administrator privileges, pipe downloads 
 shell, delete recursively, force-stop processes, discard Git changes, write to disks or
 edit files in place get a warning line.
 
-Only the last 200 lines (at most 16 KiB) of the output are sent to the model.
+Only the last 200 lines (at most 16 KiB) of the output are sent to the model, and secrets
+are removed first. whyfail replaces private keys, credentials in URLs, `Authorization`
+headers, GitHub, GitLab, AWS, Slack, Stripe, Google, npm and PyPI tokens, JWTs, LLM API
+keys and `password=`/`secret:`/`token=` style values with placeholders such as
+`[REDACTED:github-token]`, and tells you on stderr what kinds it removed:
+
+```text
+whyfail: redacted 1 secret (url-credentials) before asking the model.
+```
+
+Redaction is pattern-based. It catches common formats, not every possible secret, so avoid
+piping output that you know holds unusual credentials.
 
 Planned: a wrapper mode (`whyfail -- go build ./...`) that runs the command and explains
 it only when it fails.
