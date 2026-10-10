@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "cause": { "type": "string" },
+    "explanation": { "type": "string" },
+    "fixes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "properties": {
+          "command": { "type": "string" },
+          "description": { "type": "string" }
+        },
+        "required": ["command", "description"]
+      }
+    }
+  },
+  "required": ["cause", "explanation", "fixes"]
+}
