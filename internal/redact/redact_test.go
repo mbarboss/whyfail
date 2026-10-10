@@ -145,7 +145,7 @@ func TestRedactSecrets(t *testing.T) {
 		{
 			"Slack webhook",
 			"POST https://hooks.slack.com/services/T000/B000/" + fake("", 24),
-			"POST [REDACTED:slack-token]",
+			"POST https://hooks.slack.com/services/[REDACTED:slack-token]",
 			SlackToken,
 		},
 		{"Stripe key", "Invalid API Key provided: " + stripe, "Invalid API Key provided: [REDACTED:stripe-key]", StripeKey},

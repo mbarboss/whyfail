@@ -97,7 +97,9 @@ var rules = []rule{
 	{AWSAccessKey, regexp.MustCompile(`\b(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z2-7]{16}\b`)},
 	{AWSSecretKey, regexp.MustCompile(`(?i)(?P<keep>(?:aws_?)?secret_?(?:access_?)?key["']?\s*[:=]\s*["']?)(?P<secret>[A-Za-z0-9/+=]{40})`)},
 	{JWT, regexp.MustCompile(`\bey[A-Za-z0-9_-]{10,}\.ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*`)},
-	{SlackToken, regexp.MustCompile(`https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+|xox[abposre]-[A-Za-z0-9-]{10,}|(?i)xapp-\d-[A-Za-z0-9-]{10,}`)},
+	// Webhook URLs keep their host; the path after /services/ is the secret.
+	{SlackToken, regexp.MustCompile(`/services/(?P<secret>T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]{20,})`)},
+	{SlackToken, regexp.MustCompile(`xox[abposre]-[A-Za-z0-9-]{10,}|(?i)xapp-\d-[A-Za-z0-9-]{10,}`)},
 	{StripeKey, regexp.MustCompile(`\b(?:sk|rk)_(?:test|live|prod)_[A-Za-z0-9]{10,}`)},
 	{GoogleAPIKey, regexp.MustCompile(`AIza[\w-]{35}`)},
 	{NPMToken, regexp.MustCompile(`(?i)npm_[a-z0-9]{36}`)},
