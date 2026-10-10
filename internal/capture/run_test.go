@@ -51,7 +51,9 @@ func child(actions []string) int {
 			exe, _ := os.Executable()
 			c := exec.Command(exe, "sleep:"+arg) //nolint:gosec,noctx // the test binary re-running itself; it must outlive this process
 			c.Stdout = os.Stdout
-			_ = c.Start()
+			if c.Start() == nil {
+				fmt.Fprintf(os.Stderr, "grandchild:%d\n", c.Process.Pid)
+			}
 		case "sleep":
 			d, _ := time.ParseDuration(arg)
 			time.Sleep(d)
@@ -150,19 +152,42 @@ func TestRunLeavesTailEmptyWithoutOutput(t *testing.T) {
 }
 
 func TestRunDoesNotWaitForGrandchildrenHoldingOutput(t *testing.T) {
+	var stderr bytes.Buffer
 	start := time.Now()
 
-	got, err := Run(childArgv(t, "out:started", "spawn:6s", "exit:1"), strings.NewReader(""), io.Discard, io.Discard, DefaultLimits)
+	got, err := Run(childArgv(t, "out:started", "spawn:6s", "exit:1"), strings.NewReader(""), io.Discard, &stderr, DefaultLimits)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+	stopGrandchild(t, stderr.String())
 
 	if elapsed := time.Since(start); elapsed > 4*time.Second {
 		t.Errorf("Run took %v, want it to return soon after the child exits", elapsed)
 	}
-	if got.ExitCode != 1 || got.Tail.Text != "started\n" {
+	if got.ExitCode != 1 || !strings.HasPrefix(got.Tail.Text, "started\n") {
 		t.Errorf("got %+v", got)
 	}
+}
+
+// stopGrandchild kills the process announced in out as "grandchild:PID".
+// Windows cannot delete the test binary while it still runs.
+func stopGrandchild(t *testing.T, out string) {
+	t.Helper()
+	_, after, ok := strings.Cut(out, "grandchild:")
+	pid, err := strconv.Atoi(strings.TrimSpace(after))
+	if !ok || err != nil {
+		t.Fatalf("child did not report the grandchild: %q", out)
+	}
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		t.Fatalf("find grandchild: %v", err)
+	}
+	if err := p.Kill(); err != nil {
+		t.Logf("kill grandchild: %v", err)
+	}
+	// Wait releases the binary on Windows. Elsewhere it fails because the
+	// grandchild is not our child, and init reaps it.
+	_, _ = p.Wait()
 }
 
 func TestRunCommandNotFound(t *testing.T) {
