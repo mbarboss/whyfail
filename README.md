@@ -6,15 +6,49 @@ through [Ollama](https://ollama.com). The command output never leaves your machi
 > Status: in early development. Nothing is released yet; the planned work is tracked in
 > [issues](https://github.com/mbarboss/whyfail/issues).
 
-## Planned usage
+## Usage
+
+Pipe the output of a failed command into whyfail. Include stderr (`2>&1`), since that is
+where most errors go.
 
 ```sh
-# Wrap a command: whyfail runs it and explains the failure, if any.
-whyfail -- go build ./...
-
-# Or pipe the output of a command that already ran.
 npm install 2>&1 | whyfail
 ```
+
+```text
+Cause: The Docker socket is not accessible to your user.
+
+Your user is not in the docker group, so the operating system denies access to the
+daemon.
+
+Suggested fixes (review before running):
+
+  1. Add your user to the docker group.
+     sudo usermod -aG docker $USER
+     Warning: runs with administrator privileges.
+
+  2. Start a shell with the new group membership.
+     newgrp docker
+```
+
+whyfail never runs the suggested commands. They come from a language model, so read them
+before you run them. Commands that use administrator privileges, pipe downloads into a
+shell, delete recursively, force-stop processes, discard Git changes, write to disks or
+edit files in place get a warning line.
+
+Only the last 200 lines (at most 16 KiB) of the output are sent to the model.
+
+Planned: a wrapper mode (`whyfail -- go build ./...`) that runs the command and explains
+it only when it fails.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | The failure was explained |
+| 1 | Runtime error: Ollama unreachable, model missing, timeout, unusable answer |
+| 2 | Usage or configuration error, or nothing to explain |
+| 130 | Interrupted |
 
 ## Requirements
 
@@ -26,16 +60,29 @@ npm install 2>&1 | whyfail
 | macOS | `brew install ollama` |
 | Windows | `winget install Ollama.Ollama` |
 
+Then pull the default model (6.6 GB download; runs well on a GPU with 8 GB of VRAM):
+
+```sh
+ollama pull gemma4:e4b
+```
+
+On machines with less memory, `qwen3.5:4b` (3.3 GB) is a lighter alternative; select it
+with `--model qwen3.5:4b` or `WHYFAIL_MODEL=qwen3.5:4b`. The first request after Ollama
+starts takes longer while the model loads.
+
 ## Configuration
 
 whyfail reads its settings from flags or environment variables (flags win). See
 [`.env.example`](.env.example) for the full list.
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `WHYFAIL_MODEL` | to be defined | Ollama model used for explanations |
-| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama server; non-loopback hosts need `--allow-remote` |
-| `WHYFAIL_TIMEOUT` | `60s` | Maximum time to wait for an answer |
+| Flag | Variable | Default | Meaning |
+|---|---|---|---|
+| `--model` | `WHYFAIL_MODEL` | `gemma4:e4b` | Ollama model used for explanations |
+| `--host` | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama server; the captured output is sent here |
+| `--timeout` | `WHYFAIL_TIMEOUT` | `2m` | Maximum time to wait for an answer (1s to 10m) |
+
+`OLLAMA_HOST` accepts the same forms as the Ollama CLI, such as `127.0.0.1:11500`. whyfail
+ignores `HTTP_PROXY` and `HTTPS_PROXY`, so the output only goes to that host.
 
 ## Development
 
@@ -57,7 +104,7 @@ All commands run from the repository root and work the same on every OS.
 | Format code | `go run ./tools/task format` |
 | Full check (tidy, format, lint, tests, vulnerabilities, secrets) | `go run ./tools/task check` |
 | Integration tests (need a running Ollama) | `go run ./tools/task integration` |
-| Run locally | `go run ./cmd/whyfail -version` |
+| Run locally | `<command> 2>&1 \| go run ./cmd/whyfail` |
 | List all targets | `go run ./tools/task` |
 
 The pre-commit hook formats staged Go files, runs the linters, scans staged changes for

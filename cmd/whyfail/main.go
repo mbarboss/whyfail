@@ -3,44 +3,158 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"os/signal"
+	"time"
+
+	"github.com/mbarboss/whyfail/internal/apply"
+	"github.com/mbarboss/whyfail/internal/capture"
+	"github.com/mbarboss/whyfail/internal/config"
+	"github.com/mbarboss/whyfail/internal/llm"
+	"github.com/mbarboss/whyfail/internal/llm/ollama"
+	"github.com/mbarboss/whyfail/internal/prompt"
+	"github.com/mbarboss/whyfail/internal/render"
 )
 
 // Exit codes shared by every whyfail mode.
 const (
-	exitOK    = 0
-	exitUsage = 2
+	exitOK          = 0
+	exitFailure     = 1
+	exitUsage       = 2
+	exitInterrupted = 130
+)
+
+const (
+	pipeUsage        = "  <command> 2>&1 | whyfail"
+	progressInterval = 100 * time.Millisecond
 )
 
 // version is overridden at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+// deps holds everything run touches outside its arguments, so tests can fake it.
+type deps struct {
+	stdin            io.Reader
+	stdout, stderr   io.Writer
+	getenv           func(string) string
+	stdinIsTerminal  bool
+	stderrIsTerminal bool
+	newExplainer     func(config.Config) llm.Explainer
 }
 
-// run parses args and executes the requested mode, returning the process exit code.
-func run(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("whyfail", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	showVersion := fs.Bool("version", false, "print the version and exit")
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	code := run(ctx, os.Args[1:], deps{
+		stdin:            os.Stdin,
+		stdout:           os.Stdout,
+		stderr:           os.Stderr,
+		getenv:           os.Getenv,
+		stdinIsTerminal:  isTerminal(os.Stdin),
+		stderrIsTerminal: isTerminal(os.Stderr),
+		newExplainer:     newOllama,
+	})
+	stop()
+	os.Exit(code)
+}
 
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return exitOK
-		}
+// newOllama builds the production Explainer. Proxies are disabled so the
+// captured output only ever goes to the configured host.
+func newOllama(cfg config.Config) llm.Explainer {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return ollama.New(cfg.Host, cfg.Model, &http.Client{Transport: transport})
+}
+
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+// run executes the requested mode and returns the process exit code.
+func run(ctx context.Context, args []string, d deps) int {
+	cfg, err := config.Parse(args, d.getenv, d.stderr)
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		return exitOK
+	case errors.Is(err, config.ErrInvalid):
+		fmt.Fprintf(d.stderr, "whyfail: %v\n", err)
+		return exitUsage
+	case err != nil:
+		// The flag package has already printed the error and the usage.
 		return exitUsage
 	}
 
-	if *showVersion {
-		fmt.Fprintf(stdout, "whyfail %s\n", version)
+	if cfg.ShowVersion {
+		fmt.Fprintf(d.stdout, "whyfail %s\n", version)
 		return exitOK
 	}
+	if len(cfg.Args) > 0 {
+		fmt.Fprintf(d.stderr, "whyfail: unexpected arguments. Pipe the failed command's output instead:\n%s\n", pipeUsage)
+		return exitUsage
+	}
+	if d.stdinIsTerminal {
+		fmt.Fprintf(d.stderr, "whyfail: nothing to explain. Pipe the failed command's output into whyfail:\n%s\n", pipeUsage)
+		return exitUsage
+	}
 
-	fmt.Fprintln(stderr, "whyfail: no mode implemented yet, run with -help for options")
-	return exitUsage
+	return explainPipe(ctx, cfg, d)
+}
+
+func explainPipe(ctx context.Context, cfg config.Config, d deps) int {
+	tail, err := capture.ReadTail(d.stdin, capture.DefaultLimits)
+	if errors.Is(err, capture.ErrEmpty) {
+		fmt.Fprintf(d.stderr, "whyfail: the input was empty. Remember to include stderr:\n%s\n", pipeUsage)
+		return exitUsage
+	}
+	if err != nil {
+		fmt.Fprintf(d.stderr, "whyfail: %v\n", err)
+		return exitFailure
+	}
+
+	req := prompt.Build(prompt.Failure{Output: tail.Text, Truncated: tail.Truncated})
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+	defer cancel()
+
+	stopProgress := func() {}
+	if d.stderrIsTerminal {
+		stopProgress = render.StartProgress(d.stderr, "Asking "+cfg.Model, progressInterval)
+	}
+	answer, err := d.newExplainer(cfg).Explain(ctx, req)
+	stopProgress()
+	if err != nil {
+		return reportExplainError(d.stderr, cfg, err)
+	}
+
+	if err := render.Text(d.stdout, answer, apply.Warnings); err != nil {
+		fmt.Fprintf(d.stderr, "whyfail: write output: %v\n", err)
+		return exitFailure
+	}
+	return exitOK
+}
+
+// reportExplainError prints an actionable message for err. Messages never
+// include the captured output.
+func reportExplainError(w io.Writer, cfg config.Config, err error) int {
+	switch {
+	case errors.Is(err, context.Canceled):
+		fmt.Fprintln(w, "whyfail: interrupted")
+		return exitInterrupted
+	case errors.Is(err, llm.ErrUnreachable):
+		fmt.Fprintf(w, "whyfail: cannot reach Ollama at %s. Start it with `ollama serve` (or the Ollama app) and try again.\n", cfg.Host)
+	case errors.Is(err, llm.ErrModelNotFound):
+		fmt.Fprintf(w, "whyfail: model %s is not installed. Install it with:\n  ollama pull %s\n", cfg.Model, cfg.Model)
+	case errors.Is(err, llm.ErrTimeout):
+		fmt.Fprintf(w, "whyfail: no answer within %v. The first request can be slow while the model loads; try again or raise -timeout.\n", cfg.Timeout)
+	case errors.Is(err, llm.ErrMalformedResponse):
+		fmt.Fprintln(w, "whyfail: the model gave an unusable answer. Try again, or pick another model with -model.")
+	default:
+		fmt.Fprintf(w, "whyfail: %s\n", render.Sanitize(err.Error()))
+	}
+	return exitFailure
 }
