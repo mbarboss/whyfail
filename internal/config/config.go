@@ -38,7 +38,7 @@ const (
 	maxModelLen  = 200
 	minTimeout   = time.Second
 	maxTimeout   = 10 * time.Minute
-	usageExample = "  <command> 2>&1 | whyfail [flags]\n  whyfail [flags] -- <command> [args]"
+	usageExample = "  <command> 2>&1 | whyfail [flags]\n  whyfail [flags] -- <command> [args]\n  whyfail doctor [flags]    check that Ollama and the model are ready"
 )
 
 // ErrInvalid reports a flag or environment value that failed validation.
@@ -63,6 +63,8 @@ type Config struct {
 	Args []string
 	// Shell overrides shell detection when set.
 	Shell sysinfo.Shell
+	// Doctor selects the health check subcommand.
+	Doctor bool
 }
 
 // Parse reads flags from args, falling back to environment variables looked up
@@ -84,19 +86,30 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (Config,
 		return Config{}, err
 	}
 
-	cfg := Config{ShowVersion: *showVersion, AllowRemote: *allowRemote}
+	var cfg Config
 	rest := fs.Args()
 	// The flag package drops the "--" that ends the flags; only a command
 	// after it selects wrapper mode, so that bare words stay free for
 	// subcommands.
-	if i := len(args) - len(rest) - 1; i >= 0 && args[i] == "--" {
+	switch i := len(args) - len(rest) - 1; {
+	case i >= 0 && args[i] == "--":
 		if len(rest) == 0 {
 			return Config{}, fmt.Errorf("%w: no command after --", ErrInvalid)
 		}
 		cfg.Command = rest
-	} else {
+	case len(rest) > 0 && rest[0] == "doctor":
+		// Flags may also follow the subcommand.
+		if err := fs.Parse(rest[1:]); err != nil {
+			return Config{}, err
+		}
+		if fs.NArg() > 0 {
+			return Config{}, fmt.Errorf("%w: doctor takes no arguments", ErrInvalid)
+		}
+		cfg.Doctor = true
+	default:
 		cfg.Args = rest
 	}
+	cfg.ShowVersion, cfg.AllowRemote = *showVersion, *allowRemote
 
 	var err error
 	if cfg.Model, err = parseModel(*model); err != nil {

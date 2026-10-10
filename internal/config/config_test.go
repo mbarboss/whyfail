@@ -234,7 +234,7 @@ func TestParseHelpListsFlagsAndEnvironment(t *testing.T) {
 	if !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("err = %v, want flag.ErrHelp", err)
 	}
-	for _, want := range []string{"2>&1 | whyfail", "whyfail [flags] -- <command>", "-model", "-host", "-timeout", "-allow-remote", "-shell", "-version", "WHYFAIL_MODEL", "OLLAMA_HOST", "WHYFAIL_TIMEOUT", "WHYFAIL_SHELL"} {
+	for _, want := range []string{"2>&1 | whyfail", "whyfail [flags] -- <command>", "whyfail doctor", "-model", "-host", "-timeout", "-allow-remote", "-shell", "-version", "WHYFAIL_MODEL", "OLLAMA_HOST", "WHYFAIL_TIMEOUT", "WHYFAIL_SHELL"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("help does not mention %s", want)
 		}
@@ -288,5 +288,58 @@ func TestParseRejectsUnknownShell(t *testing.T) {
 				t.Errorf("error echoes the rejected value: %v", err)
 			}
 		})
+	}
+}
+
+func TestParseDoctorSubcommand(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"bare", []string{"doctor"}},
+		{"flags before", []string{"-model", "qwen3.5:4b", "doctor"}},
+		{"flags after", []string{"doctor", "-model", "qwen3.5:4b"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := Parse(tt.args, env(nil), &bytes.Buffer{})
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+
+			if !cfg.Doctor || len(cfg.Args) != 0 || len(cfg.Command) != 0 {
+				t.Errorf("Doctor = %v, Args = %q, Command = %q", cfg.Doctor, cfg.Args, cfg.Command)
+			}
+			if tt.name != "bare" && cfg.Model != "qwen3.5:4b" {
+				t.Errorf("Model = %q", cfg.Model)
+			}
+		})
+	}
+}
+
+func TestParseDoctorRejectsExtraArguments(t *testing.T) {
+	_, err := Parse([]string{"doctor", "now"}, env(nil), &bytes.Buffer{})
+
+	if !errors.Is(err, ErrInvalid) || strings.Contains(err.Error(), "now") {
+		t.Errorf("err = %v, want ErrInvalid without the argument", err)
+	}
+}
+
+func TestParseDoctorAfterDoubleDashIsACommand(t *testing.T) {
+	cfg, err := Parse([]string{"--", "doctor"}, env(nil), &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if cfg.Doctor || strings.Join(cfg.Command, " ") != "doctor" {
+		t.Errorf("Doctor = %v, Command = %q", cfg.Doctor, cfg.Command)
+	}
+}
+
+func TestParseDoctorRejectsBadFlagAfterIt(t *testing.T) {
+	_, err := Parse([]string{"doctor", "-nope"}, env(nil), &bytes.Buffer{})
+
+	if err == nil {
+		t.Error("Parse accepted an unknown flag after doctor")
 	}
 }

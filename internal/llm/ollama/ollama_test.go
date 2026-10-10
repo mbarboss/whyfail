@@ -219,3 +219,103 @@ func TestExplainKeepsCancellation(t *testing.T) {
 		t.Errorf("err = %v, want context.Canceled", err)
 	}
 }
+
+func TestVersion(t *testing.T) {
+	c := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/version" {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+		}
+		fmt.Fprint(w, `{"version":"0.40.1"}`)
+	})
+
+	got, err := c.Version(context.Background())
+	if err != nil {
+		t.Fatalf("Version: %v", err)
+	}
+
+	if got != "0.40.1" {
+		t.Errorf("Version = %q", got)
+	}
+}
+
+func TestVersionErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		code int
+		want error
+	}{
+		{"not json", "<html>", http.StatusOK, llm.ErrMalformedResponse},
+		{"empty version", `{"version":""}`, http.StatusOK, llm.ErrMalformedResponse},
+		{"server error", `{"error":"boom"}`, http.StatusInternalServerError, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.code)
+				fmt.Fprint(w, tt.body)
+			})
+
+			_, err := c.Version(context.Background())
+
+			if err == nil || (tt.want != nil && !errors.Is(err, tt.want)) {
+				t.Errorf("err = %v, want %v", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestVersionUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	u, _ := url.Parse(srv.URL)
+	srv.Close()
+
+	_, err := New(u, "m", http.DefaultClient).Version(context.Background())
+
+	if !errors.Is(err, llm.ErrUnreachable) {
+		t.Errorf("err = %v, want ErrUnreachable", err)
+	}
+}
+
+func TestHasModel(t *testing.T) {
+	tests := []struct {
+		name string
+		code int
+		want bool
+	}{
+		{"installed", http.StatusOK, true},
+		{"missing", http.StatusNotFound, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got map[string]any
+			c := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != "/api/show" {
+					t.Errorf("request = %s %s", r.Method, r.URL.Path)
+				}
+				_ = json.NewDecoder(r.Body).Decode(&got)
+				w.WriteHeader(tt.code)
+				fmt.Fprint(w, `{}`)
+			})
+
+			ok, err := c.HasModel(context.Background())
+			if err != nil {
+				t.Fatalf("HasModel: %v", err)
+			}
+
+			if ok != tt.want || got["model"] != "gemma4:e4b" {
+				t.Errorf("HasModel = %v, request = %v", ok, got)
+			}
+		})
+	}
+}
+
+func TestHasModelServerError(t *testing.T) {
+	c := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+
+	if _, err := c.HasModel(context.Background()); err == nil {
+		t.Error("HasModel succeeded on a server error")
+	}
+}
