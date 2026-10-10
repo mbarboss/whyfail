@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,6 +20,7 @@ import (
 	"github.com/mbarboss/whyfail/internal/config"
 	"github.com/mbarboss/whyfail/internal/llm"
 	"github.com/mbarboss/whyfail/internal/llm/ollama"
+	"github.com/mbarboss/whyfail/internal/netguard"
 	"github.com/mbarboss/whyfail/internal/prompt"
 	"github.com/mbarboss/whyfail/internal/redact"
 	"github.com/mbarboss/whyfail/internal/render"
@@ -35,6 +37,8 @@ const (
 const (
 	pipeUsage        = "  <command> 2>&1 | whyfail"
 	progressInterval = 100 * time.Millisecond
+	// resolveTimeout bounds the startup check that the host is loopback.
+	resolveTimeout = 2 * time.Second
 )
 
 // version is overridden at build time with -ldflags "-X main.version=...".
@@ -48,6 +52,7 @@ type deps struct {
 	stdinIsTerminal  bool
 	stderrIsTerminal bool
 	newExplainer     func(config.Config) llm.Explainer
+	resolver         netguard.Resolver
 }
 
 func main() {
@@ -60,16 +65,23 @@ func main() {
 		stdinIsTerminal:  isTerminal(os.Stdin),
 		stderrIsTerminal: isTerminal(os.Stderr),
 		newExplainer:     newOllama,
+		resolver:         net.DefaultResolver,
 	})
 	stop()
 	os.Exit(code)
 }
 
 // newOllama builds the production Explainer. Proxies are disabled so the
-// captured output only ever goes to the configured host.
+// captured output only ever goes to the configured host, and unless remote
+// hosts are allowed every connection must reach a loopback address.
 func newOllama(cfg config.Config) llm.Explainer {
+	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	if !cfg.AllowRemote {
+		dialer.Control = netguard.Control
+	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
+	transport.DialContext = dialer.DialContext
 	return ollama.New(cfg.Host, cfg.Model, &http.Client{Transport: transport})
 }
 
@@ -105,7 +117,36 @@ func run(ctx context.Context, args []string, d deps) int {
 		return exitUsage
 	}
 
+	if code := checkHost(ctx, cfg, d); code != exitOK {
+		return code
+	}
 	return explainPipe(ctx, cfg, d)
+}
+
+// checkHost refuses a host that is not on this machine unless --allow-remote
+// was passed, in which case it warns on every run.
+func checkHost(ctx context.Context, cfg config.Config, d deps) int {
+	if cfg.AllowRemote {
+		transport := ""
+		if cfg.Host.Scheme == "http" {
+			transport = " over unencrypted HTTP"
+		}
+		fmt.Fprintf(d.stderr, "whyfail: warning: --allow-remote is set; command output is sent to %s%s.\n", cfg.Host, transport)
+		return exitOK
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, resolveTimeout)
+	defer cancel()
+	err := netguard.CheckHost(ctx, d.resolver, cfg.Host.Hostname())
+	switch {
+	case err == nil:
+		return exitOK
+	case errors.Is(err, netguard.ErrUnresolved):
+		fmt.Fprintf(d.stderr, "whyfail: cannot resolve %s to check that it is on this machine. Use an address such as %s, or pass --allow-remote.\n", cfg.Host, config.DefaultHost)
+	default:
+		fmt.Fprintf(d.stderr, "whyfail: refusing to send output to %s: it is not a loopback address. Pass --allow-remote to allow it.\n", cfg.Host)
+	}
+	return exitUsage
 }
 
 func explainPipe(ctx context.Context, cfg config.Config, d deps) int {
@@ -168,6 +209,8 @@ func reportExplainError(w io.Writer, cfg config.Config, err error) int {
 	case errors.Is(err, context.Canceled):
 		fmt.Fprintln(w, "whyfail: interrupted")
 		return exitInterrupted
+	case errors.Is(err, netguard.ErrNotLoopback):
+		fmt.Fprintln(w, "whyfail: refused to connect to a non-loopback address; the server may have redirected the request. Pass --allow-remote to allow it.")
 	case errors.Is(err, llm.ErrUnreachable):
 		fmt.Fprintf(w, "whyfail: cannot reach Ollama at %s. Start it with `ollama serve` (or the Ollama app) and try again.\n", cfg.Host)
 	case errors.Is(err, llm.ErrModelNotFound):

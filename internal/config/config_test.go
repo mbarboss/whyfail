@@ -28,7 +28,7 @@ func TestParseDefaults(t *testing.T) {
 	if cfg.Timeout != DefaultTimeout {
 		t.Errorf("Timeout = %v, want %v", cfg.Timeout, DefaultTimeout)
 	}
-	if cfg.ShowVersion || len(cfg.Args) != 0 {
+	if cfg.ShowVersion || cfg.AllowRemote || len(cfg.Args) != 0 {
 		t.Errorf("unexpected ShowVersion=%v Args=%v", cfg.ShowVersion, cfg.Args)
 	}
 }
@@ -81,6 +81,14 @@ func TestParseOllamaHostForms(t *testing.T) {
 		{"http://127.0.0.1:11434/", "http://127.0.0.1:11434"},
 		{"https://ollama.internal", "https://ollama.internal"},
 		{"  http://127.0.0.1:11434  ", "http://127.0.0.1:11434"},
+		// 0.0.0.0 is how users make the Ollama server listen everywhere; as a
+		// client destination it means this machine.
+		{"0.0.0.0", "http://127.0.0.1:11434"},
+		{"0.0.0.0:11500", "http://127.0.0.1:11500"},
+		{"http://0.0.0.0:11434", "http://127.0.0.1:11434"},
+		{"[::]:11434", "http://[::1]:11434"},
+		{"https://0.0.0.0", "https://127.0.0.1"},
+		{"https://[::]", "https://[::1]"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
@@ -139,6 +147,24 @@ func TestParseErrorDoesNotEchoValue(t *testing.T) {
 	}
 }
 
+func TestParseAllowRemoteIsFlagOnly(t *testing.T) {
+	cfg, err := Parse([]string{"-allow-remote"}, env(nil), &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !cfg.AllowRemote {
+		t.Error("AllowRemote = false with -allow-remote")
+	}
+
+	cfg, err = Parse(nil, env(map[string]string{"WHYFAIL_ALLOW_REMOTE": "1"}), &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.AllowRemote {
+		t.Error("AllowRemote must not come from the environment")
+	}
+}
+
 func TestParseVersionFlag(t *testing.T) {
 	cfg, err := Parse([]string{"-version"}, env(nil), &bytes.Buffer{})
 	if err != nil {
@@ -167,7 +193,7 @@ func TestParseHelpListsFlagsAndEnvironment(t *testing.T) {
 	if !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("err = %v, want flag.ErrHelp", err)
 	}
-	for _, want := range []string{"-model", "-host", "-timeout", "-version", "WHYFAIL_MODEL", "OLLAMA_HOST", "WHYFAIL_TIMEOUT"} {
+	for _, want := range []string{"-model", "-host", "-timeout", "-allow-remote", "-version", "WHYFAIL_MODEL", "OLLAMA_HOST", "WHYFAIL_TIMEOUT"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("help does not mention %s", want)
 		}

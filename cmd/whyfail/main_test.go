@@ -5,11 +5,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mbarboss/whyfail/internal/config"
 	"github.com/mbarboss/whyfail/internal/llm"
+	"github.com/mbarboss/whyfail/internal/netguard"
 )
 
 type fakeExplainer struct {
@@ -284,5 +290,142 @@ func TestRunNoRedactionNoticeWithoutSecrets(t *testing.T) {
 
 	if strings.Contains(h.stderr.String(), "redacted") {
 		t.Errorf("unexpected notice: %q", h.stderr.String())
+	}
+}
+
+type fakeResolver map[string]string
+
+func (f fakeResolver) LookupIPAddr(_ context.Context, host string) ([]net.IPAddr, error) {
+	ip, ok := f[host]
+	if !ok {
+		return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+	}
+	return []net.IPAddr{{IP: net.ParseIP(ip)}}, nil
+}
+
+func TestRunRefusesRemoteHost(t *testing.T) {
+	h, d := newHarness("error\n")
+	h.env["OLLAMA_HOST"] = "http://192.168.1.10:11434"
+
+	code := run(context.Background(), nil, d)
+
+	if code != exitUsage || h.fake.calls != 0 {
+		t.Fatalf("exit code = %d, calls = %d", code, h.fake.calls)
+	}
+	for _, want := range []string{"192.168.1.10", "not a loopback address", "--allow-remote"} {
+		if !strings.Contains(h.stderr.String(), want) {
+			t.Errorf("stderr lacks %q: %q", want, h.stderr.String())
+		}
+	}
+}
+
+func TestRunRefusesNameResolvingToRemote(t *testing.T) {
+	h, d := newHarness("error\n")
+	d.resolver = fakeResolver{"localhost": "203.0.113.7"}
+	h.env["OLLAMA_HOST"] = "localhost"
+
+	code := run(context.Background(), nil, d)
+
+	if code != exitUsage || h.fake.calls != 0 {
+		t.Errorf("exit code = %d, calls = %d", code, h.fake.calls)
+	}
+}
+
+func TestRunRefusesUnresolvableHost(t *testing.T) {
+	h, d := newHarness("error\n")
+	d.resolver = fakeResolver{}
+	h.env["OLLAMA_HOST"] = "ollama.invalid"
+
+	code := run(context.Background(), nil, d)
+
+	if code != exitUsage || h.fake.calls != 0 {
+		t.Fatalf("exit code = %d, calls = %d", code, h.fake.calls)
+	}
+	if !strings.Contains(h.stderr.String(), "cannot resolve") {
+		t.Errorf("stderr = %q", h.stderr.String())
+	}
+}
+
+func TestRunAllowsLocalhostName(t *testing.T) {
+	h, d := newHarness("error\n")
+	d.resolver = fakeResolver{"localhost": "127.0.0.1"}
+	h.env["OLLAMA_HOST"] = "localhost"
+
+	code := run(context.Background(), nil, d)
+
+	if code != exitOK || strings.Contains(h.stderr.String(), "warning") {
+		t.Errorf("exit code = %d, stderr = %q", code, h.stderr.String())
+	}
+}
+
+func TestRunAllowRemoteWarnsEveryRun(t *testing.T) {
+	h, d := newHarness("error\n")
+	h.env["OLLAMA_HOST"] = "http://192.168.1.10:11434"
+
+	code := run(context.Background(), []string{"-allow-remote"}, d)
+
+	if code != exitOK || h.fake.calls != 1 {
+		t.Fatalf("exit code = %d, calls = %d, stderr = %q", code, h.fake.calls, h.stderr.String())
+	}
+	if !h.cfg.AllowRemote {
+		t.Error("explainer built without AllowRemote")
+	}
+	for _, want := range []string{"warning: --allow-remote", "http://192.168.1.10:11434", "unencrypted"} {
+		if !strings.Contains(h.stderr.String(), want) {
+			t.Errorf("stderr lacks %q: %q", want, h.stderr.String())
+		}
+	}
+}
+
+func TestRunAllowRemoteOverHTTPSHasNoPlaintextNote(t *testing.T) {
+	h, d := newHarness("error\n")
+	h.env["OLLAMA_HOST"] = "https://ollama.example"
+
+	run(context.Background(), []string{"-allow-remote"}, d)
+
+	if !strings.Contains(h.stderr.String(), "warning: --allow-remote") || strings.Contains(h.stderr.String(), "unencrypted") {
+		t.Errorf("stderr = %q", h.stderr.String())
+	}
+}
+
+func TestRunReportsBlockedConnection(t *testing.T) {
+	h, d := newHarness("error\n")
+	h.fake.err = fmt.Errorf("ollama: %w: dial: %w", llm.ErrUnreachable, netguard.ErrNotLoopback)
+
+	code := run(context.Background(), nil, d)
+
+	if code != exitFailure || !strings.Contains(h.stderr.String(), "non-loopback") {
+		t.Errorf("exit code = %d, stderr = %q", code, h.stderr.String())
+	}
+}
+
+func TestNewOllamaBlocksNonLoopbackConnections(t *testing.T) {
+	// 192.0.2.0/24 is reserved for documentation; the guard refuses it before
+	// any packet is sent.
+	host, _ := url.Parse("http://192.0.2.1:11434")
+	e := newOllama(config.Config{Model: "m", Host: host})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := e.Explain(ctx, llm.Request{})
+
+	if !errors.Is(err, netguard.ErrNotLoopback) {
+		t.Errorf("err = %v, want ErrNotLoopback", err)
+	}
+}
+
+func TestNewOllamaReachesLoopbackServer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"message":{"role":"assistant","content":"{\"cause\":\"c\",\"explanation\":\"e\",\"fixes\":[{\"command\":\"ls\",\"description\":\"d\"}]}"},"done":true,"done_reason":"stop"}`)
+	}))
+	defer srv.Close()
+	host, _ := url.Parse(srv.URL)
+
+	got, err := newOllama(config.Config{Model: "m", Host: host}).Explain(context.Background(), llm.Request{})
+	if err != nil {
+		t.Fatalf("Explain: %v", err)
+	}
+	if got.Cause != "c" {
+		t.Errorf("got %+v", got)
 	}
 }
