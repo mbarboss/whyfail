@@ -25,6 +25,7 @@ import (
 	"github.com/mbarboss/whyfail/internal/prompt"
 	"github.com/mbarboss/whyfail/internal/redact"
 	"github.com/mbarboss/whyfail/internal/render"
+	"github.com/mbarboss/whyfail/internal/sysinfo"
 )
 
 // Exit codes shared by every whyfail mode. In wrapper mode whyfail exits with
@@ -58,6 +59,7 @@ type deps struct {
 	stderrIsTerminal bool
 	newExplainer     func(config.Config) llm.Explainer
 	resolver         netguard.Resolver
+	probe            sysinfo.Probe
 }
 
 func main() {
@@ -71,6 +73,7 @@ func main() {
 		stderrIsTerminal: isTerminal(os.Stderr),
 		newExplainer:     newOllama,
 		resolver:         net.DefaultResolver,
+		probe:            sysinfo.System(os.Getenv),
 	})
 	stop()
 	os.Exit(code)
@@ -230,6 +233,11 @@ func explain(ctx context.Context, cfg config.Config, d deps, f prompt.Failure) i
 	command, output := redact.Redact(f.Command), redact.Redact(f.Output)
 	reportRedaction(d.stderr, command, output)
 	f.Command, f.Output = command.Text, output.Text
+	info := sysinfo.Detect(d.probe, cfg.Shell)
+	f.Environment = info.String()
+	if info.Shell != sysinfo.Unknown {
+		f.Shell = info.Shell.String()
+	}
 
 	req := prompt.Build(f)
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)

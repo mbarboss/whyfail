@@ -16,6 +16,7 @@ import (
 	"github.com/mbarboss/whyfail/internal/config"
 	"github.com/mbarboss/whyfail/internal/llm"
 	"github.com/mbarboss/whyfail/internal/netguard"
+	"github.com/mbarboss/whyfail/internal/sysinfo"
 )
 
 type fakeExplainer struct {
@@ -56,6 +57,15 @@ func newHarness(stdin string) (*harness, deps) {
 		newExplainer: func(cfg config.Config) llm.Explainer {
 			h.cfg = cfg
 			return h.fake
+		},
+		probe: sysinfo.Probe{
+			GOOS:       "linux",
+			GOARCH:     "arm64",
+			Getenv:     func(string) string { return "" },
+			ParentName: func() (string, error) { return "zsh", nil },
+			ReadFile: func(string) ([]byte, error) {
+				return []byte("PRETTY_NAME=\"Test Linux 1\"\n"), nil
+			},
 		},
 	}
 	return h, d
@@ -430,5 +440,47 @@ func TestNewOllamaReachesLoopbackServer(t *testing.T) {
 	}
 	if got.Cause != "c" {
 		t.Errorf("got %+v", got)
+	}
+}
+
+func TestRunTellsTheModelAboutTheEnvironment(t *testing.T) {
+	h, d := newHarness("error\n")
+
+	run(context.Background(), nil, d)
+
+	if want := "Environment: Linux (Test Linux 1), arm64, shell zsh.\nWrite every fix in zsh syntax.\n"; !strings.Contains(h.fake.got.User, want) {
+		t.Errorf("prompt lacks %q: %q", want, h.fake.got.User)
+	}
+}
+
+func TestRunUnknownShellAsksForNoSyntax(t *testing.T) {
+	h, d := newHarness("error\n")
+	d.probe.ParentName = func() (string, error) { return "make", nil }
+
+	run(context.Background(), nil, d)
+
+	if !strings.Contains(h.fake.got.User, "shell unknown.") || strings.Contains(h.fake.got.User, "syntax") {
+		t.Errorf("prompt = %q", h.fake.got.User)
+	}
+}
+
+func TestRunShellOverride(t *testing.T) {
+	h, d := newHarness("error\n")
+	h.env["WHYFAIL_SHELL"] = "pwsh"
+
+	run(context.Background(), nil, d)
+
+	if !strings.Contains(h.fake.got.User, "shell PowerShell.") {
+		t.Errorf("prompt ignores the override: %q", h.fake.got.User)
+	}
+}
+
+func TestRunRejectsInvalidShell(t *testing.T) {
+	h, d := newHarness("error\n")
+
+	code := run(context.Background(), []string{"-shell", "tcsh"}, d)
+
+	if code != exitUsage || h.fake.calls != 0 {
+		t.Errorf("exit code = %d, calls = %d", code, h.fake.calls)
 	}
 }

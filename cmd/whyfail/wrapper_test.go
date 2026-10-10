@@ -81,7 +81,7 @@ func TestWrapperExplainsFailureAndKeepsExitCode(t *testing.T) {
 	if !strings.HasPrefix(h.stderr.String(), "fatal: no upstream\n") {
 		t.Errorf("child stderr not streamed: %q", h.stderr.String())
 	}
-	for _, want := range []string{"<command>", "It exited with code 3.", "fatal: no upstream"} {
+	for _, want := range []string{"Environment: Linux (Test Linux 1), arm64, shell zsh.", "<command>", "It exited with code 3.", "fatal: no upstream"} {
 		if !strings.Contains(h.fake.got.User, want) {
 			t.Errorf("prompt lacks %q: %q", want, h.fake.got.User)
 		}

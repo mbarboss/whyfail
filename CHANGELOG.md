@@ -27,6 +27,9 @@ All notable changes to this project are documented here. The format follows
   code (127 when the command is not found, 126 when it cannot be started), and an
   interrupted command is not explained. The command line and exit code are part of the
   prompt, with secrets in the command line redacted.
+- The prompt names the OS, CPU architecture, Linux distribution and shell, and asks for
+  fixes in that shell's syntax. The shell is detected from the parent process (falling
+  back to `$SHELL`) and can be set with `--shell` or `WHYFAIL_SHELL`.
 - Model output is stripped of terminal escape sequences and control characters before it
   is printed, and only the tail of the command output is sent to the model.
 

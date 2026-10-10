@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mbarboss/whyfail/internal/sysinfo"
 )
 
 // Defaults used when neither a flag nor an environment variable is set.
@@ -28,6 +30,7 @@ const (
 	EnvModel   = "WHYFAIL_MODEL"
 	EnvHost    = "OLLAMA_HOST"
 	EnvTimeout = "WHYFAIL_TIMEOUT"
+	EnvShell   = "WHYFAIL_SHELL"
 )
 
 const (
@@ -58,6 +61,8 @@ type Config struct {
 	Command []string
 	// Args holds positional arguments given without "--".
 	Args []string
+	// Shell overrides shell detection when set.
+	Shell sysinfo.Shell
 }
 
 // Parse reads flags from args, falling back to environment variables looked up
@@ -71,6 +76,7 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (Config,
 	model := fs.String("model", envOr(getenv, EnvModel, DefaultModel), "Ollama model to use (env "+EnvModel+")")
 	host := fs.String("host", envOr(getenv, EnvHost, DefaultHost), "Ollama server URL (env "+EnvHost+")")
 	timeout := fs.String("timeout", envOr(getenv, EnvTimeout, DefaultTimeout.String()), "maximum time to wait for an answer (env "+EnvTimeout+")")
+	shell := fs.String("shell", envOr(getenv, EnvShell, ""), "shell to write fixes for: bash, zsh, fish, powershell or cmd (default: detected; env "+EnvShell+")")
 	allowRemote := fs.Bool("allow-remote", false, "allow an Ollama host that is not on this machine; command output is then sent over the network")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 
@@ -100,6 +106,9 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (Config,
 		return Config{}, err
 	}
 	if cfg.Timeout, err = parseTimeout(*timeout); err != nil {
+		return Config{}, err
+	}
+	if cfg.Shell, err = parseShell(*shell); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
@@ -187,4 +196,15 @@ func parseTimeout(s string) (time.Duration, error) {
 		return 0, invalid("-timeout / "+EnvTimeout, fmt.Sprintf("a duration between %v and %v, such as 2m", minTimeout, maxTimeout))
 	}
 	return d, nil
+}
+
+func parseShell(s string) (sysinfo.Shell, error) {
+	if strings.TrimSpace(s) == "" {
+		return "", nil
+	}
+	shell, ok := sysinfo.LookupShell(s)
+	if !ok {
+		return "", invalid("-shell / "+EnvShell, "one of bash, zsh, fish, powershell (or pwsh) and cmd")
+	}
+	return shell, nil
 }
