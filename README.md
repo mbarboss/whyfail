@@ -8,12 +8,21 @@ through [Ollama](https://ollama.com). The command output never leaves your machi
 
 ## Usage
 
-Pipe the output of a failed command into whyfail. Include stderr (`2>&1`), since that is
-where most errors go.
+Put the command after `--`. whyfail runs it, shows its output as it arrives, and explains
+it only when it fails:
+
+```sh
+whyfail -- npm install
+```
+
+Or pipe the output of a command that already failed into whyfail. Include stderr (`2>&1`),
+since that is where most errors go:
 
 ```sh
 npm install 2>&1 | whyfail
 ```
+
+Either way the answer looks like this:
 
 ```text
 Cause: The Docker socket is not accessible to your user.
@@ -49,17 +58,29 @@ whyfail: redacted 1 secret (url-credentials) before asking the model.
 Redaction is pattern-based. It catches common formats, not every possible secret, so avoid
 piping output that you know holds unusual credentials.
 
-Planned: a wrapper mode (`whyfail -- go build ./...`) that runs the command and explains
-it only when it fails.
+### Wrapping a command
+
+- The command runs directly, without a shell, so pipes, redirections and shell built-ins
+  are not available. To use them, wrap a shell yourself, for example
+  `whyfail -- bash -c 'make 2>&1 | tee build.log'` or `whyfail -- pwsh -c 'Get-Item x'`.
+- The command's output goes through a pipe rather than straight to the terminal, so some
+  programs turn off colors or progress bars.
+- Ctrl+C reaches the command as usual. An interrupted command is not explained.
+- whyfail exits with the command's exit code, even when the explanation itself fails (for
+  example, Ollama is not running), so wrapping a command does not change what scripts see.
+  A command killed by a signal is reported as 128 plus the signal number, like a shell does.
 
 ### Exit codes
 
 | Code | Meaning |
 |---|---|
-| 0 | The failure was explained |
-| 1 | Runtime error: Ollama unreachable, model missing, timeout, unusable answer |
-| 2 | Usage or configuration error, non-loopback host without `--allow-remote`, or nothing to explain |
-| 130 | Interrupted |
+| Command's code | Wrapper mode: the command ran (explained or not) |
+| 0 | Pipe mode: the failure was explained |
+| 1 | Runtime error: Ollama unreachable, model missing, timeout, unusable answer (pipe mode) |
+| 2 | Usage or configuration error, non-loopback host without `--allow-remote`, or empty input |
+| 126 | Wrapper mode: the command was found but could not be started (for example, no execute permission) |
+| 127 | Wrapper mode: command not found |
+| 130 | Interrupted (pipe mode) |
 
 ## Requirements
 
