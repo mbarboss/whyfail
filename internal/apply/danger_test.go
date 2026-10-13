@@ -2,6 +2,7 @@ package apply
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -46,6 +47,13 @@ func TestWarningsFlagsRiskyCommands(t *testing.T) {
 		{"sed -i '/strings/d' internal/foo/foo.go", EditsInPlace},
 		{"echo 'export PATH=$PATH:/opt/x' >> ~/.bashrc", EditsInPlace},
 		{"setx PATH \"%PATH%;C:\\tools\"", EditsInPlace},
+		{"git push -u origin <correct-branch-name>", Placeholder},
+		{"kill <PID>", Placeholder},
+		{"cd <path/to/repo>", Placeholder},
+		{"git commit -m \"<message>\"", Placeholder},
+		{"Stop-Process -Id <process_id>", Placeholder},
+		{"curl http://<host>:8080/health", Placeholder},
+		{"cat <in.txt>out.txt", Placeholder},
 	}
 	for _, tt := range tests {
 		t.Run(tt.command, func(t *testing.T) {
@@ -75,6 +83,14 @@ func TestWarningsAllowsCommonSafeCommands(t *testing.T) {
 		"echo hi | grep h",
 		"winget install Microsoft.VisualStudio.2022.BuildTools",
 		"git checkout main",
+		"make 2>&1",
+		"go test ./... > out.txt",
+		"sort < in.txt",
+		"cat <<EOF",
+		"diff <(ls a) <(ls b)",
+		"python -c 'print(1<2)'",
+		"echo \"a<b\" > c.txt",
+		"Get-Content in.txt | Out-File out.txt",
 	}
 	for _, cmd := range safe {
 		if got := Warnings(cmd); got != nil {
@@ -94,5 +110,19 @@ func TestWarningsAreDedupedAndOrdered(t *testing.T) {
 func TestWarningsIgnoreCase(t *testing.T) {
 	if got := Warnings("SUDO make install"); !slices.Contains(got, Elevated) {
 		t.Errorf("Warnings = %v", got)
+	}
+}
+
+func TestWarningsPlaceholderHandlesMalformedInput(t *testing.T) {
+	inputs := []string{
+		"<", ">", "<>", "<<<<", "<< >>", "< x >", "<1st>", "<-x>", "<a b>",
+		"<unclosed-placeholder", "unopened-placeholder>",
+		"<\x1b[31mred\x1b[0m>",
+		strings.Repeat("<", 100000) + "a",
+	}
+	for _, in := range inputs {
+		if got := Warnings(in); slices.Contains(got, Placeholder) {
+			t.Errorf("Warnings(%.40q) = %v, want no placeholder warning", in, got)
+		}
 	}
 }

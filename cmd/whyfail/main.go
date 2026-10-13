@@ -278,6 +278,9 @@ func (a *applier) offer(ctx context.Context, d deps, answer llm.Explanation, chi
 	case errors.Is(err, apply.ErrRedacted):
 		fmt.Fprintf(d.stderr, "whyfail: fix %d contains a value that was redacted before asking the model; edit it and run it yourself.\n", i+1)
 		return exit(exitFailure)
+	case errors.Is(err, apply.ErrPlaceholder):
+		fmt.Fprintf(d.stderr, "whyfail: fix %d has a placeholder to replace; edit it and run it yourself.\n", i+1)
+		return exit(exitFailure)
 	case errors.Is(err, context.Canceled):
 		return exit(exitInterrupted)
 	case err != nil:

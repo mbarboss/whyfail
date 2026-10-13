@@ -92,6 +92,8 @@ Type "yes" to run it with bash:
   shell, so pass `--shell` when it cannot be detected.
 - A fix that contains a redacted placeholder such as `[REDACTED:github-token]` is not run, since
   it would use the placeholder instead of your secret. Edit it and run it yourself.
+- A fix that still holds a placeholder such as `<branch-name>` gets a warning and is not run,
+  since the shell would read `<` and `>` as redirections. Edit it and run it yourself.
 - In pipe mode whyfail exits with the fix's exit code, or 0 when nothing ran. In wrapper mode
   it still exits with the wrapped command's code.
 - `--apply` is a flag only, with no environment variable, so nothing runs because of a
