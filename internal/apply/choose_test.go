@@ -131,6 +131,17 @@ func TestChooseRefusesRedactedFix(t *testing.T) {
 	}
 }
 
+func TestChooseRefusesFixWithPlaceholder(t *testing.T) {
+	i, out, err := choose(t, "2\nyes\n", "git branch", "git push -u origin <correct-branch-name>")
+
+	if !errors.Is(err, ErrPlaceholder) || i != 1 {
+		t.Fatalf("Choose = %d, %v; want 1, ErrPlaceholder", i, err)
+	}
+	if strings.Contains(out, "[y/N]") || strings.Contains(out, `"yes"`) {
+		t.Errorf("asked to confirm a fix with a placeholder: %q", out)
+	}
+}
+
 func TestChooseStopsWhenInterrupted(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

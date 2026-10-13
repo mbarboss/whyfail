@@ -14,6 +14,7 @@ const (
 	DiscardsChanges = "can discard work that is not saved elsewhere"
 	DiskWrite       = "writes directly to a disk"
 	EditsInPlace    = "modifies files or settings in place"
+	Placeholder     = "has a placeholder to replace before running"
 )
 
 type rule struct {
@@ -23,6 +24,11 @@ type rule struct {
 
 // args matches the rest of a simple command, stopping at a command separator.
 const args = `[^;&|\n]*`
+
+// placeholder matches the <word> markers models use for values the user must
+// fill in. Requiring a letter right after "<" and no spaces inside keeps
+// redirections such as "2>&1", "< in.txt", "<<EOF" and "<(cmd)" out of it.
+var placeholder = regexp.MustCompile(`<[A-Za-z][\w.\-/:]*>`)
 
 // rules are checked in order. They are a safety net for suggestions that
 // come from an untrusted model, not a sandbox: they aim to catch the common
@@ -75,6 +81,7 @@ var rules = []rule{
 		`\bsetx\b`,
 		`\[environment\]::setenvironmentvariable\b`,
 	)},
+	{Placeholder, []*regexp.Regexp{placeholder}},
 }
 
 func compile(exprs ...string) []*regexp.Regexp {

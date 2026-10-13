@@ -39,7 +39,8 @@ All notable changes to this project are documented here. The format follows
 - `--apply` offers to run one suggested fix after the explanation, asking on the terminal
   which fix to run and for confirmation (default no; fixes with a danger warning need
   `yes`). The fix runs exactly as shown through the detected shell. It is refused without a
-  terminal, with `--json`, with an unknown shell and for fixes that contain a redacted value.
+  terminal, with `--json`, with an unknown shell and for fixes that contain a redacted value
+  or a placeholder such as `<branch-name>` (which also gets a warning).
 - Model output is stripped of terminal escape sequences and control characters before it
   is printed, and only the tail of the command output is sent to the model.
 

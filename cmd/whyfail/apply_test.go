@@ -135,6 +135,24 @@ func TestApplyRefusesRedactedFix(t *testing.T) {
 	}
 }
 
+func TestApplyRefusesFixWithPlaceholder(t *testing.T) {
+	h, d := newHarness("error\n")
+	h.fake.answer.Fixes = []llm.Fix{{Command: "git push -u origin <correct-branch-name>", Description: "Push it."}}
+	ft := withTerminal(&d, "yes\n")
+
+	code := run(context.Background(), []string{"-apply"}, d)
+
+	if code != exitFailure || ft.ran != nil {
+		t.Errorf("exit code = %d, ran = %v", code, ft.ran)
+	}
+	if !strings.Contains(h.stderr.String(), "fix 1 has a placeholder to replace") {
+		t.Errorf("stderr = %q", h.stderr.String())
+	}
+	if !strings.Contains(h.stdout.String(), "Warning: has a placeholder to replace before running") {
+		t.Errorf("stdout lacks the placeholder warning: %q", h.stdout.String())
+	}
+}
+
 func TestApplyReportsAFixThatCannotStart(t *testing.T) {
 	h, d := newHarness("error\n")
 	ft := withTerminal(&d, "y\n")

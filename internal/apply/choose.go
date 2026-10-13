@@ -20,6 +20,9 @@ var (
 	// ErrRedacted means the chosen fix holds a redaction placeholder, so
 	// running it would use the placeholder instead of the real value.
 	ErrRedacted = errors.New("fix contains a redacted value")
+	// ErrPlaceholder means the chosen fix still holds a placeholder such as
+	// <branch-name>, which a shell would read as a redirection.
+	ErrPlaceholder = errors.New("fix contains a placeholder")
 )
 
 // Choose asks which of commands to run and then asks to confirm it, reading
@@ -40,6 +43,9 @@ func Choose(ctx context.Context, in io.Reader, out io.Writer, commands []string,
 	}
 	if redact.HasPlaceholder(commands[i]) {
 		return i, fmt.Errorf("%w: fix %d", ErrRedacted, i+1)
+	}
+	if placeholder.MatchString(commands[i]) {
+		return i, fmt.Errorf("%w: fix %d", ErrPlaceholder, i+1)
 	}
 	return i, interrupted(out, confirm(r, out, commands[i], shell))
 }
