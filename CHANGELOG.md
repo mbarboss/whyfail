@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-13
+
 ### Added
 
 - Project foundation: Go module, task runner, linting, pre-commit hooks, CI on Linux,
@@ -55,3 +57,6 @@ All notable changes to this project are documented here. The format follows
 
 - Require Go toolchain 1.27.2, which fixes several `net/http` and `crypto/tls`
   vulnerabilities in 1.27.1.
+
+[Unreleased]: https://github.com/mbarboss/whyfail/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/mbarboss/whyfail/releases/tag/v0.1.0
