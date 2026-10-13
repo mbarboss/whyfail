@@ -35,9 +35,8 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
-# Release notes come from CHANGELOG.md (go run ./tools/task release-notes).
-changelog:
-  disable: true
+# Release notes come from CHANGELOG.md through --release-notes (see release.yml). Do not
+# set changelog.disable: it also skips loading that file and leaves the notes empty.
 
 release:
   github:
