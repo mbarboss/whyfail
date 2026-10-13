@@ -46,6 +46,11 @@ var rules = []rule{
 		`\|\s*(iex|invoke-expression)\b`,
 		`\b(iex|invoke-expression)\b`,
 		`<\(\s*(curl|wget|iwr|invoke-webrequest)\b`,
+		// A download run as code: bash -c "$(curl ...)", eval "$(wget ...)".
+		// Backticks cannot appear in a raw string, hence the quoted form.
+		"\\b((ba|z|da|k)?sh|eval|source)\\b[^;&|\\n]*(\\$\\(|`)\\s*(curl|wget)\\b",
+		// A download followed by running a file: curl -o i.sh && bash i.sh.
+		`\b(curl|wget|iwr|invoke-webrequest)\b.*(&&|;|\|\|)\s*(sudo\s+)?(((ba|z|da|k)?sh|source|pwsh|powershell)\s+[^-\s]|\.\s+\S|\./|\.\\)`,
 	)},
 	{RecursiveDelete, compile(
 		`\brm\b`+args+`\s(-[a-z]*r[a-z]*|--recursive)(\s|$)`,
