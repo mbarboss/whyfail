@@ -281,7 +281,7 @@ func TestRedactVeryLongLineIsFast(t *testing.T) {
 	if strings.Contains(got.Text, "hunter2") {
 		t.Error("secret survived")
 	}
-	if d := time.Since(start); d > 2*time.Second {
+	if d := time.Since(start); d > 2*time.Second && !raceEnabled {
 		t.Errorf("took %v on a 1 MiB line", d)
 	}
 }

@@ -41,6 +41,7 @@ func targets() map[string]target {
 		"format":      {"format all Go code", noArgs(func(ctx context.Context) error { return tool(ctx, "golangci-lint", "fmt") })},
 		"lint":        {"run linters", noArgs(lint)},
 		"test":        {"run unit tests and enforce the coverage floor", noArgs(test)},
+		"race":        {"run unit tests with the race detector (needs a C compiler)", noArgs(race)},
 		"integration": {"run opt-in integration tests (needs a running Ollama)", noArgs(integration)},
 		"vuln":        {"scan dependencies for known vulnerabilities", noArgs(vuln)},
 		"secrets":     {"scan git history for secrets", noArgs(secrets)},
@@ -143,6 +144,26 @@ func test(ctx context.Context) (err error) {
 	fmt.Fprintf(os.Stderr, "total coverage: %.1f%% (floor %.1f%%)\n", total, coverageFloor)
 	if total < coverageFloor {
 		return fmt.Errorf("coverage %.1f%% is below the %.1f%% floor", total, coverageFloor)
+	}
+	return nil
+}
+
+// race is not part of check: the race detector needs cgo and a C compiler,
+// which a plain Go install on Windows lacks.
+func race(ctx context.Context) error {
+	pkgs, err := appPackages(ctx)
+	if err != nil {
+		return err
+	}
+	cmd, err := goCommand(ctx, append([]string{"test", "-race", "-count=1", "-shuffle=on"}, pkgs...)...)
+	if err != nil {
+		return err
+	}
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("go test -race: %w", err)
 	}
 	return nil
 }
