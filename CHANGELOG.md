@@ -41,6 +41,8 @@ All notable changes to this project are documented here. The format follows
   `yes`). The fix runs exactly as shown through the detected shell. It is refused without a
   terminal, with `--json`, with an unknown shell and for fixes that contain a redacted value
   or a placeholder such as `<branch-name>` (which also gets a warning).
+- Fixes that install a package named in the error output (pip, uv, npm, pnpm, yarn, gem,
+  cargo, go) get a warning, so `--apply` asks for `yes` before running them.
 - Model output is stripped of terminal escape sequences and control characters before it
   is printed, and only the tail of the command output is sent to the model.
 

@@ -149,6 +149,22 @@ func TestJSONWrapperSendsCommandOutputToStderr(t *testing.T) {
 	}
 }
 
+func TestJSONWrapperWarnsAboutAPackageNamedInTheOutput(t *testing.T) {
+	h, d := newHarness("")
+	h.fake.answer.Fixes = []llm.Fix{{Command: "pip install foo", Description: "Install it."}}
+
+	run(context.Background(), wrap(t, "-json", "err:No module named 'foo'", "exit:1"), d)
+
+	fixes, _ := jsonOut(t, h)["fixes"].([]any)
+	if len(fixes) != 1 {
+		t.Fatalf("fixes = %v", fixes)
+	}
+	warnings, _ := fixes[0].(map[string]any)["warnings"].([]any)
+	if len(warnings) != 1 || !strings.HasPrefix(warnings[0].(string), "installs a package named in the error output") {
+		t.Errorf("warnings = %v", warnings)
+	}
+}
+
 func TestJSONWrapperSuccess(t *testing.T) {
 	h, d := newHarness("")
 

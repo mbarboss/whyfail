@@ -12,7 +12,7 @@ import (
 func choose(t *testing.T, input string, commands ...string) (int, string, error) {
 	t.Helper()
 	var out bytes.Buffer
-	i, err := Choose(context.Background(), strings.NewReader(input), &out, commands, "bash")
+	i, err := Choose(context.Background(), strings.NewReader(input), &out, commands, "bash", Warnings)
 	return i, out.String(), err
 }
 
@@ -107,6 +107,20 @@ func TestChooseDangerousFixNeedsTheWordYes(t *testing.T) {
 	}
 }
 
+func TestChooseUsesTheGivenWarnings(t *testing.T) {
+	warn := WarningsFor("No module named 'foo'")
+	var out bytes.Buffer
+
+	_, err := Choose(context.Background(), strings.NewReader("y\n"), &out, []string{"pip install foo"}, "bash", warn)
+
+	if !errors.Is(err, ErrDeclined) {
+		t.Fatalf("err = %v, want ErrDeclined: a warned fix needs \"yes\"", err)
+	}
+	if !strings.Contains(out.String(), "Warning: "+NamedPackage) {
+		t.Errorf("output lacks the warning: %q", out.String())
+	}
+}
+
 func TestChooseShowsTheChosenCommandBeforeConfirming(t *testing.T) {
 	_, out, _ := choose(t, "2\nn\n", "make", "rm -rf build && make")
 
@@ -148,7 +162,7 @@ func TestChooseStopsWhenInterrupted(t *testing.T) {
 	in, w := io.Pipe()
 	defer func() { _ = w.Close() }()
 
-	_, err := Choose(ctx, in, io.Discard, []string{"go mod tidy"}, "bash")
+	_, err := Choose(ctx, in, io.Discard, []string{"go mod tidy"}, "bash", Warnings)
 
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)
@@ -160,7 +174,7 @@ type failingReader struct{}
 func (failingReader) Read([]byte) (int, error) { return 0, errors.New("tty gone") }
 
 func TestChooseReportsReadErrors(t *testing.T) {
-	_, err := Choose(context.Background(), failingReader{}, io.Discard, []string{"make"}, "bash")
+	_, err := Choose(context.Background(), failingReader{}, io.Discard, []string{"make"}, "bash", Warnings)
 
 	if err == nil || errors.Is(err, ErrDeclined) || !strings.Contains(err.Error(), "tty gone") {
 		t.Errorf("err = %v, want the read error", err)

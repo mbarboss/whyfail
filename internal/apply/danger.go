@@ -15,6 +15,7 @@ const (
 	DiskWrite       = "writes directly to a disk"
 	EditsInPlace    = "modifies files or settings in place"
 	Placeholder     = "has a placeholder to replace before running"
+	NamedPackage    = "installs a package named in the error output; check the name and source first"
 )
 
 type rule struct {
