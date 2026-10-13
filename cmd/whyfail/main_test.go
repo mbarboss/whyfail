@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +90,31 @@ func newHarness(stdin string) (*harness, deps) {
 		},
 	}
 	return h, d
+}
+
+func TestResolveVersion(t *testing.T) {
+	module := func(v string) *debug.BuildInfo { return &debug.BuildInfo{Main: debug.Module{Version: v}} }
+	tests := []struct {
+		name    string
+		ldflags string
+		info    *debug.BuildInfo
+		ok      bool
+		want    string
+	}{
+		{"release build sets ldflags", "0.1.0", module("v0.1.0"), true, "0.1.0"},
+		{"go install of a tag", "dev", module("v0.1.0"), true, "0.1.0"},
+		{"go build from a checkout", "dev", module("v0.1.1-0.20261013120000-abcdef123456+dirty"), true, "0.1.1-0.20261013120000-abcdef123456+dirty"},
+		{"no module version", "dev", module("(devel)"), true, "dev"},
+		{"empty module version", "dev", module(""), true, "dev"},
+		{"no build info", "dev", nil, false, "dev"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveVersion(tt.ldflags, tt.info, tt.ok); got != tt.want {
+				t.Errorf("resolveVersion = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestRunPrintsVersion(t *testing.T) {
