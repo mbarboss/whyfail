@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,19 @@ const (
 // version is overridden at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
+// resolveVersion prefers the version set by the release build. Without it,
+// "go install ...@v0.1.0" still records the module version in the binary,
+// and "go build" in a checkout records a pseudo-version from Git.
+func resolveVersion(ldflags string, info *debug.BuildInfo, ok bool) string {
+	if ldflags != "dev" || !ok || info == nil {
+		return ldflags
+	}
+	if v := info.Main.Version; v != "" && v != "(devel)" {
+		return strings.TrimPrefix(v, "v")
+	}
+	return ldflags
+}
+
 // deps holds everything run touches outside its arguments, so tests can fake it.
 type deps struct {
 	stdin            io.Reader
@@ -69,6 +83,8 @@ type deps struct {
 }
 
 func main() {
+	info, ok := debug.ReadBuildInfo()
+	version = resolveVersion(version, info, ok)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	code := run(ctx, os.Args[1:], deps{
 		stdin:            os.Stdin,
