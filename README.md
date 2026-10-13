@@ -3,8 +3,7 @@
 whyfail explains why a terminal command failed and suggests a fix, using a local LLM
 through [Ollama](https://ollama.com). The command output never leaves your machine.
 
-> Status: in early development. Nothing is released yet; the planned work is tracked in
-> [issues](https://github.com/mbarboss/whyfail/issues).
+![Terminal recording: whyfail explains a failed git push, a misspelled Python import and a Docker permission error, and marks the sudo fix with a warning.](docs/demo.gif)
 
 ## Install
 
@@ -304,6 +303,7 @@ All commands run from the repository root and work the same on every OS.
 | Integration tests (need a running Ollama) | `go run ./tools/task integration` |
 | Run locally | `<command> 2>&1 \| go run ./cmd/whyfail` |
 | List all targets | `go run ./tools/task` |
+| Re-record the demo GIF (needs [VHS](https://github.com/charmbracelet/vhs) with `ttyd` and `ffmpeg`, plus Ollama) | `vhs docs/demo.tape` |
 
 The pre-commit hook formats staged Go files, runs the linters, scans staged changes for
 secrets and rejects files larger than 1 MiB.
