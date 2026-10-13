@@ -36,6 +36,10 @@ All notable changes to this project are documented here. The format follows
 - `--json` prints one JSON object (cause, explanation, fixes with danger warnings, model,
   command and exit code) or an error with a stable `error.code`, for pipe mode, wrapper
   mode and `doctor`. In wrapper mode the command's output then goes to stderr.
+- `--apply` offers to run one suggested fix after the explanation, asking on the terminal
+  which fix to run and for confirmation (default no; fixes with a danger warning need
+  `yes`). The fix runs exactly as shown through the detected shell. It is refused without a
+  terminal, with `--json`, with an unknown shell and for fixes that contain a redacted value.
 - Model output is stripped of terminal escape sequences and control characters before it
   is printed, and only the tail of the command output is sent to the model.
 

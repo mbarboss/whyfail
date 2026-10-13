@@ -55,20 +55,20 @@ type jsonReport struct {
 func JSON(w io.Writer, r Report, warn func(command string) []string) error {
 	out := jsonReport{SchemaVersion: SchemaVersion, Model: r.Model, ExitCode: r.ExitCode}
 	if r.Command != nil {
-		cmd := oneLine(*r.Command)
+		cmd := OneLine(*r.Command)
 		out.Command = &cmd
 	}
 	if r.Error != nil {
 		out.Error = &ReportError{Code: r.Error.Code, Message: strings.TrimSpace(Sanitize(r.Error.Message))}
 	}
 	if a := r.Answer; a != nil {
-		out.Cause = oneLine(a.Cause)
+		out.Cause = OneLine(a.Cause)
 		out.Explanation = Sanitize(a.Explanation)
 		for _, f := range a.Fixes {
-			fix := jsonFix{Command: oneLine(f.Command), Description: Sanitize(f.Description), Warnings: []string{}}
+			fix := jsonFix{Command: OneLine(f.Command), Description: Sanitize(f.Description), Warnings: []string{}}
 			if warn != nil {
 				for _, reason := range warn(fix.Command) {
-					fix.Warnings = append(fix.Warnings, oneLine(reason))
+					fix.Warnings = append(fix.Warnings, OneLine(reason))
 				}
 			}
 			out.Fixes = append(out.Fixes, fix)
@@ -87,7 +87,7 @@ type jsonCheck struct {
 func DoctorJSON(w io.Writer, results []doctor.Result) error {
 	checks := make([]jsonCheck, 0, len(results))
 	for _, r := range results {
-		checks = append(checks, jsonCheck{Status: strings.ToLower(r.Status.String()), Title: oneLine(r.Title), Fix: oneLine(r.Fix)})
+		checks = append(checks, jsonCheck{Status: strings.ToLower(r.Status.String()), Title: OneLine(r.Title), Fix: OneLine(r.Fix)})
 	}
 	return writeJSON(w, struct {
 		SchemaVersion int         `json:"schemaVersion"`

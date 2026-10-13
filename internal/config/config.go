@@ -67,6 +67,9 @@ type Config struct {
 	Doctor bool
 	// JSON selects machine-readable output. It is a flag only.
 	JSON bool
+	// Apply offers to run one suggested fix after confirmation. It is a flag
+	// only, so a forgotten variable never runs anything.
+	Apply bool
 }
 
 // Parse reads flags from args, falling back to environment variables looked up
@@ -83,6 +86,7 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (Config,
 	shell := fs.String("shell", envOr(getenv, EnvShell, ""), "shell to write fixes for: bash, zsh, fish, powershell or cmd (default: detected; env "+EnvShell+")")
 	allowRemote := fs.Bool("allow-remote", false, "allow an Ollama host that is not on this machine; command output is then sent over the network")
 	jsonOut := fs.Bool("json", false, "print one JSON object instead of text")
+	applyFix := fs.Bool("apply", false, "offer to run one suggested fix, after confirmation on the terminal")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	// Errors keep JSON so they can be reported in the format the caller asked
 	// for, as long as -json came before the error.
@@ -115,7 +119,13 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (Config,
 	default:
 		cfg.Args = rest
 	}
-	cfg.ShowVersion, cfg.AllowRemote, cfg.JSON = *showVersion, *allowRemote, *jsonOut
+	cfg.ShowVersion, cfg.AllowRemote, cfg.JSON, cfg.Apply = *showVersion, *allowRemote, *jsonOut, *applyFix
+	if cfg.Apply && cfg.JSON {
+		return fail(fmt.Errorf("%w: -apply asks for confirmation on the terminal and cannot be combined with -json", ErrInvalid))
+	}
+	if cfg.Apply && cfg.Doctor {
+		return fail(fmt.Errorf("%w: doctor does not take -apply", ErrInvalid))
+	}
 
 	var err error
 	if cfg.Model, err = parseModel(*model); err != nil {

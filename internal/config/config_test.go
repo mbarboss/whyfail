@@ -385,3 +385,41 @@ func TestParseKeepsJSONOnErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestParseApplyFlag(t *testing.T) {
+	cfg, err := Parse([]string{"-apply", "--", "make"}, env(nil), &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if !cfg.Apply {
+		t.Error("Apply = false")
+	}
+}
+
+func TestParseApplyHasNoEnvironmentVariable(t *testing.T) {
+	cfg, err := Parse(nil, env(map[string]string{"WHYFAIL_APPLY": "1"}), &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if cfg.Apply {
+		t.Error("Apply enabled from the environment")
+	}
+}
+
+func TestParseRejectsApplyWithJSONOrDoctor(t *testing.T) {
+	tests := map[string][]string{
+		"json":   {"-apply", "-json"},
+		"doctor": {"-apply", "doctor"},
+	}
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := Parse(args, env(nil), &bytes.Buffer{})
+
+			if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "-apply") {
+				t.Errorf("err = %v, want ErrInvalid naming -apply", err)
+			}
+		})
+	}
+}

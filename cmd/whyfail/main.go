@@ -64,6 +64,8 @@ type deps struct {
 	probe            sysinfo.Probe
 	newServer        func(config.Config) doctor.Server
 	lookPath         func(string) (string, error)
+	openTerminal     func() (apply.Terminal, error)
+	runFix           func(apply.Plan, io.Reader, io.Writer, io.Writer) (int, error)
 }
 
 func main() {
@@ -78,6 +80,8 @@ func main() {
 		newExplainer:     func(cfg config.Config) llm.Explainer { return newOllama(cfg) },
 		newServer:        func(cfg config.Config) doctor.Server { return newOllama(cfg) },
 		lookPath:         exec.LookPath,
+		openTerminal:     apply.OpenTerminal,
+		runFix:           apply.Run,
 		resolver:         net.DefaultResolver,
 		probe:            sysinfo.System(os.Getenv),
 	})
@@ -149,7 +153,11 @@ func run(ctx context.Context, args []string, d deps) int {
 		if f := checkHost(ctx, cfg, d); f != nil {
 			return finish(cfg, d, outcome{exit: exitUsage, fail: f})
 		}
-		return finish(cfg, d, explainCommand(ctx, cfg, d))
+		a, f := prepareApply(cfg, d)
+		if f != nil {
+			return finish(cfg, d, outcome{exit: exitUsage, fail: f})
+		}
+		return finishAndApply(ctx, cfg, d, a, explainCommand(ctx, cfg, d))
 	}
 	if len(cfg.Args) > 0 {
 		return finish(cfg, d, outcome{exit: exitUsage, fail: &failure{
@@ -167,7 +175,11 @@ func run(ctx context.Context, args []string, d deps) int {
 	if f := checkHost(ctx, cfg, d); f != nil {
 		return finish(cfg, d, outcome{exit: exitUsage, fail: f})
 	}
-	return finish(cfg, d, explainPipe(ctx, cfg, d))
+	a, f := prepareApply(cfg, d)
+	if f != nil {
+		return finish(cfg, d, outcome{exit: exitUsage, fail: f})
+	}
+	return finishAndApply(ctx, cfg, d, a, explainPipe(ctx, cfg, d))
 }
 
 // finish prints o as text or JSON and returns the exit code.
@@ -192,6 +204,96 @@ func finish(cfg config.Config, d deps, o outcome) int {
 		}
 	}
 	return o.exit
+}
+
+// applier offers to run one fix after the explanation (-apply).
+type applier struct {
+	term  apply.Terminal
+	shell apply.Shell
+}
+
+// prepareApply checks, before anything runs, that a confirmed fix could be
+// run: the shell is known and installed, and there is a terminal to confirm
+// on. It returns nil without -apply.
+func prepareApply(cfg config.Config, d deps) (*applier, *failure) {
+	if !cfg.Apply {
+		return nil, nil
+	}
+	info := sysinfo.Detect(d.probe, cfg.Shell)
+	shell, err := apply.FindShell(info.Shell, d.probe.GOOS, d.lookPath)
+	switch {
+	case errors.Is(err, apply.ErrUnknownShell):
+		return nil, &failure{code: "apply_unknown_shell", message: "-apply needs to know which shell runs the fix. Pass -shell with bash, zsh, fish, powershell or cmd."}
+	case errors.Is(err, apply.ErrUnsupportedShell):
+		return nil, &failure{code: "apply_unsupported_shell", message: fmt.Sprintf("-apply cannot run %s fixes on this system. Pass -shell with the shell you use.", info.Shell)}
+	case err != nil:
+		return nil, &failure{code: "apply_shell_not_found", message: fmt.Sprintf("-apply cannot find %s to run the fix. Install it or pass -shell.", info.Shell)}
+	}
+
+	term, err := d.openTerminal()
+	if err != nil {
+		return nil, &failure{code: "apply_no_terminal", message: "-apply needs an interactive terminal to confirm the fix. Run whyfail from a terminal, or without -apply."}
+	}
+	return &applier{term: term, shell: shell}, nil
+}
+
+// finishAndApply prints o and then, with -apply, offers to run one of its
+// fixes.
+func finishAndApply(ctx context.Context, cfg config.Config, d deps, a *applier, o outcome) int {
+	code := finish(cfg, d, o)
+	if a == nil {
+		return code
+	}
+	defer func() {
+		if err := a.term.Close(); err != nil {
+			fmt.Fprintf(d.stderr, "whyfail: close terminal: %v\n", err)
+		}
+	}()
+	if o.answer == nil || code != o.exit {
+		return code
+	}
+	return a.offer(ctx, d, *o.answer, o.childExit)
+}
+
+// offer asks which fix to run, confirms it and runs it in the user's shell.
+// In pipe mode whyfail exits with the fix's code (0 when nothing ran); in
+// wrapper mode it keeps the wrapped command's code.
+func (a *applier) offer(ctx context.Context, d deps, answer llm.Explanation, childExit *int) int {
+	exit := func(code int) int {
+		if childExit != nil {
+			return *childExit
+		}
+		return code
+	}
+	commands := make([]string, len(answer.Fixes))
+	for i, f := range answer.Fixes {
+		commands[i] = render.OneLine(f.Command)
+	}
+
+	i, err := apply.Choose(ctx, a.term.In, a.term.Out, commands, a.shell.Name())
+	switch {
+	case errors.Is(err, apply.ErrSkipped), errors.Is(err, apply.ErrDeclined):
+		fmt.Fprintln(a.term.Out, "Nothing was run.")
+		return exit(exitOK)
+	case errors.Is(err, apply.ErrRedacted):
+		fmt.Fprintf(d.stderr, "whyfail: fix %d contains a value that was redacted before asking the model; edit it and run it yourself.\n", i+1)
+		return exit(exitFailure)
+	case errors.Is(err, context.Canceled):
+		return exit(exitInterrupted)
+	case err != nil:
+		fmt.Fprintf(d.stderr, "whyfail: %s\n", render.Sanitize(err.Error()))
+		return exit(exitFailure)
+	}
+
+	code, err := d.runFix(a.shell.Command(commands[i]), a.term.In, d.stdout, d.stderr)
+	if err != nil {
+		fmt.Fprintf(d.stderr, "whyfail: cannot run the fix: %s\n", render.Sanitize(err.Error()))
+		return exit(exitFailure)
+	}
+	if code != 0 {
+		fmt.Fprintf(d.stderr, "whyfail: the fix exited with code %d.\n", code)
+	}
+	return exit(code)
 }
 
 // writeFailed reports that the result could not be printed. In wrapper mode

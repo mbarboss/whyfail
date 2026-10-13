@@ -39,6 +39,12 @@ const placeholderPrefix = "[REDACTED:"
 
 func placeholder(k Kind) string { return placeholderPrefix + string(k) + "]" }
 
+// HasPlaceholder reports whether s contains a redaction placeholder, in any
+// case and with or without a kind, as a model may echo it back.
+func HasPlaceholder(s string) bool {
+	return strings.Contains(strings.ToLower(s), "[redacted")
+}
+
 // Result is redacted text plus how many secrets of each kind were removed.
 type Result struct {
 	Text   string

@@ -293,3 +293,18 @@ func TestRedactEmpty(t *testing.T) {
 		t.Errorf("got %+v", got)
 	}
 }
+
+func TestHasPlaceholder(t *testing.T) {
+	tests := map[string]bool{
+		"export TOKEN=" + Redact("ghp_"+strings.Repeat("a", 36)).Text: true,
+		"curl -u [REDACTED:credential] https://x.test":                true,
+		"echo [redacted]":                 true,
+		"git push -u origin main":         false,
+		"echo REDACTED without a bracket": false,
+	}
+	for s, want := range tests {
+		if got := HasPlaceholder(s); got != want {
+			t.Errorf("HasPlaceholder(%q) = %v, want %v", s, got, want)
+		}
+	}
+}
