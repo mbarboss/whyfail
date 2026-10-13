@@ -244,6 +244,7 @@ All commands run from the repository root and work the same on every OS.
 | Install git hooks (once) | `go run ./tools/task hooks` |
 | Format code | `go run ./tools/task format` |
 | Full check (tidy, format, lint, tests, vulnerabilities, secrets) | `go run ./tools/task check` |
+| Tests with the race detector (need a C compiler, such as gcc, Xcode Command Line Tools or MinGW-w64; CI runs them on Linux) | `go run ./tools/task race` |
 | Integration tests (need a running Ollama) | `go run ./tools/task integration` |
 | Run locally | `<command> 2>&1 \| go run ./cmd/whyfail` |
 | List all targets | `go run ./tools/task` |
