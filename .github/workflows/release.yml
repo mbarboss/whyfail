@@ -101,6 +101,15 @@ jobs:
       - name: Download the published release
         run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/release"
 
+      - name: Check that the release has notes
+        if: runner.os == 'Linux'
+        run: |
+          body=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
+          if [ -z "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+            echo "::error::The release notes are empty"
+            exit 1
+          fi
+
       - name: Verify the provenance of every archive
         if: runner.os == 'Linux'
         run: |
