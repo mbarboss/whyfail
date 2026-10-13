@@ -42,20 +42,20 @@ func Sanitize(s string) string {
 // may be nil. Every field is sanitized because it comes from the model.
 func Text(w io.Writer, e llm.Explanation, warn func(command string) []string) error {
 	var b strings.Builder
-	b.WriteString("Cause: " + oneLine(e.Cause) + "\n\n")
+	b.WriteString("Cause: " + OneLine(e.Cause) + "\n\n")
 	b.WriteString(Sanitize(e.Explanation) + "\n\n")
 	b.WriteString("Suggested fixes (review before running):\n")
 
 	for i, f := range e.Fixes {
 		num := strconv.Itoa(i+1) + ". "
 		indent := strings.Repeat(" ", 2+len(num))
-		cmd := oneLine(f.Command)
+		cmd := OneLine(f.Command)
 
 		b.WriteString("\n  " + num + indentLines(Sanitize(f.Description), indent) + "\n")
 		b.WriteString(indent + cmd + "\n")
 		if warn != nil {
 			for _, reason := range warn(cmd) {
-				b.WriteString(indent + "Warning: " + oneLine(reason) + ".\n")
+				b.WriteString(indent + "Warning: " + OneLine(reason) + ".\n")
 			}
 		}
 	}
@@ -63,7 +63,9 @@ func Text(w io.Writer, e llm.Explanation, warn func(command string) []string) er
 	return err
 }
 
-func oneLine(s string) string {
+// OneLine sanitizes s and collapses its whitespace into single spaces.
+// Commands are shown in this form, and -apply runs them exactly as shown.
+func OneLine(s string) string {
 	return strings.Join(strings.Fields(Sanitize(s)), " ")
 }
 

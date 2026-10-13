@@ -1,4 +1,5 @@
-// Package apply decides how suggested fixes are presented and run.
+// Package apply flags risky suggested fixes and runs one after the user
+// confirms it on the terminal.
 package apply
 
 import "regexp"

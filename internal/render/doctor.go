@@ -13,9 +13,9 @@ import (
 func Doctor(w io.Writer, results []doctor.Result) error {
 	var b strings.Builder
 	for _, r := range results {
-		fmt.Fprintf(&b, "%-4s  %s\n", r.Status, oneLine(r.Title))
+		fmt.Fprintf(&b, "%-4s  %s\n", r.Status, OneLine(r.Title))
 		if r.Fix != "" {
-			fmt.Fprintf(&b, "      Fix: %s\n", oneLine(r.Fix))
+			fmt.Fprintf(&b, "      Fix: %s\n", OneLine(r.Fix))
 		}
 	}
 	_, err := io.WriteString(w, b.String())

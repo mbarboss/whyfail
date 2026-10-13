@@ -40,8 +40,8 @@ Suggested fixes (review before running):
      newgrp docker
 ```
 
-whyfail never runs the suggested commands. They come from a language model, so read them
-before you run them. Commands that use administrator privileges, pipe downloads into a
+whyfail never runs the suggested commands on its own (see [Running a fix](#running-a-fix)).
+They come from a language model, so read them before you run them. Commands that use administrator privileges, pipe downloads into a
 shell, delete recursively, force-stop processes, discard Git changes, write to disks or
 edit files in place get a warning line.
 
@@ -69,6 +69,33 @@ piping output that you know holds unusual credentials.
 - whyfail exits with the command's exit code, even when the explanation itself fails (for
   example, Ollama is not running), so wrapping a command does not change what scripts see.
   A command killed by a signal is reported as 128 plus the signal number, like a shell does.
+
+### Running a fix
+
+With `--apply`, whyfail offers to run one of the suggested fixes after the explanation:
+
+```text
+Run which fix? [1-2, Enter to skip]: 1
+
+  sudo usermod -aG docker $USER
+  Warning: runs with administrator privileges.
+Type "yes" to run it with bash:
+```
+
+- The questions are asked on the terminal itself, so `--apply` works in pipe mode too. Without
+  a terminal (in CI, cron or with `--json`) whyfail refuses `--apply` with exit code 2 before
+  doing anything else.
+- The default answer is no. A fix with a warning runs only after you type `yes`; any other fix
+  also accepts `y`.
+- The fix runs exactly as shown, through your shell: `bash -c`, `zsh -c`, `fish -c`,
+  `pwsh -NoProfile -Command` (or `powershell`) or `cmd /d /s /c`. whyfail needs to know the
+  shell, so pass `--shell` when it cannot be detected.
+- A fix that contains a redacted placeholder such as `[REDACTED:github-token]` is not run, since
+  it would use the placeholder instead of your secret. Edit it and run it yourself.
+- In pipe mode whyfail exits with the fix's exit code, or 0 when nothing ran. In wrapper mode
+  it still exits with the wrapped command's code.
+- `--apply` is a flag only, with no environment variable, so nothing runs because of a
+  forgotten setting.
 
 ### JSON output
 
@@ -124,9 +151,10 @@ text. `whyfail --json doctor` prints
 | Code | Meaning |
 |---|---|
 | Command's code | Wrapper mode: the command ran (explained or not) |
-| 0 | Pipe mode: the failure was explained |
-| 1 | Runtime error: Ollama unreachable, model missing, timeout, unusable answer (pipe mode) |
-| 2 | Usage or configuration error, non-loopback host without `--allow-remote`, or empty input |
+| 0 | Pipe mode: the failure was explained (and with `--apply`, no fix ran) |
+| Fix's code | Pipe mode with `--apply`: the confirmed fix ran |
+| 1 | Runtime error: Ollama unreachable, model missing, timeout, unusable answer, or a fix that could not run (pipe mode) |
+| 2 | Usage or configuration error, non-loopback host without `--allow-remote`, empty input, or `--apply` without a terminal or a known shell |
 | 126 | Wrapper mode: the command was found but could not be started (for example, no execute permission) |
 | 127 | Wrapper mode: command not found |
 | 130 | Interrupted (pipe mode) |
@@ -178,7 +206,8 @@ whyfail reads its settings from flags or environment variables (flags win). See
 | `--allow-remote` | (none) | off | Allow a host that is not on this machine |
 | `--timeout` | `WHYFAIL_TIMEOUT` | `2m` | Maximum time to wait for an answer (1s to 10m) |
 | `--json` | (none) | off | Print one JSON object instead of text (see [JSON output](#json-output)) |
-| `--shell` | `WHYFAIL_SHELL` | detected | Shell to write fixes for: `bash`, `zsh`, `fish`, `powershell` (or `pwsh`), `cmd` |
+| `--shell` | `WHYFAIL_SHELL` | detected | Shell to write fixes for, and to run them with `--apply`: `bash`, `zsh`, `fish`, `powershell` (or `pwsh`), `cmd` |
+| `--apply` | (none) | off | Offer to run one fix after confirmation (see [Running a fix](#running-a-fix)) |
 
 Along with the output, the model is told your OS, CPU architecture and shell, plus the
 distribution name from `/etc/os-release` on Linux, so fixes use the right package manager

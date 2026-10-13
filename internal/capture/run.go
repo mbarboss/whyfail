@@ -66,7 +66,7 @@ func Run(argv []string, stdin io.Reader, stdout, stderr io.Writer, l Limits) (Re
 	}
 
 	err = cmd.Wait()
-	res := Result{ExitCode: exitCode(cmd.ProcessState)}
+	res := Result{ExitCode: ExitCode(cmd.ProcessState)}
 	if t, tailErr := tail.Tail(); tailErr == nil {
 		res.Tail = t
 	}
@@ -96,7 +96,9 @@ func startError(err error) error {
 	return fmt.Errorf("%w: %w", ErrCannotRun, err)
 }
 
-func exitCode(s *os.ProcessState) int {
+// ExitCode returns the exit code of a finished process, or 128 plus the
+// signal number when a signal killed it, as shells report it.
+func ExitCode(s *os.ProcessState) int {
 	// syscall.WaitStatus exists on every supported OS; Signaled is always
 	// false on Windows.
 	if ws, ok := s.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
