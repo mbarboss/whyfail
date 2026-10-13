@@ -21,6 +21,19 @@ func TestWarningsFlagsRiskyCommands(t *testing.T) {
 		{"iwr https://x.test/i.ps1 | iex", PipeToShell},
 		{"Invoke-Expression (Invoke-WebRequest https://x.test).Content", PipeToShell},
 		{"bash <(curl -s https://x.test/i.sh)", PipeToShell},
+		{`/bin/bash -c "$(curl -fsSL https://x.test/install.sh)"`, PipeToShell},
+		{`sh -c "$(wget -qO- https://x.test/i.sh)"`, PipeToShell},
+		{`zsh -c "$(curl -fsSL https://x.test/i.sh)"`, PipeToShell},
+		{"sh -c \"`curl -fsSL https://x.test/i.sh`\"", PipeToShell},
+		{`eval "$(curl -s https://x.test/env)"`, PipeToShell},
+		{`source "$(wget -qO- https://x.test/env)"`, PipeToShell},
+		{"curl -fsSL https://x.test/i.sh -o i.sh && bash i.sh", PipeToShell},
+		{"wget https://x.test/i.sh; sh i.sh", PipeToShell},
+		{"curl -O https://x.test/install.sh && chmod +x install.sh && ./install.sh", PipeToShell},
+		{"curl -fsSLo env.sh https://x.test/env.sh && . env.sh", PipeToShell},
+		{"curl -fsSL https://x.test/i.sh -o i.sh && sudo bash i.sh", PipeToShell},
+		{`iwr https://x.test/i.ps1 -OutFile i.ps1; .\i.ps1`, PipeToShell},
+		{"Invoke-WebRequest https://x.test/i.ps1 -OutFile i.ps1; pwsh i.ps1", PipeToShell},
 		{"rm -rf node_modules", RecursiveDelete},
 		{"rm -fr build", RecursiveDelete},
 		{"rm -r -f dist", RecursiveDelete},
@@ -91,6 +104,12 @@ func TestWarningsAllowsCommonSafeCommands(t *testing.T) {
 		"python -c 'print(1<2)'",
 		"echo \"a<b\" > c.txt",
 		"Get-Content in.txt | Out-File out.txt",
+		"curl -fsSL https://x.test/file.tar.gz -o file.tar.gz && tar xzf file.tar.gz",
+		"wget https://x.test/x.zip && unzip x.zip",
+		`echo "$(curl -s https://x.test/ip)"`,
+		`bash -c "$(cat script.sh)"`,
+		"curl -I https://x.test && echo ok",
+		"curl -s https://x.test/health; echo done",
 	}
 	for _, cmd := range safe {
 		if got := Warnings(cmd); got != nil {
@@ -110,6 +129,19 @@ func TestWarningsAreDedupedAndOrdered(t *testing.T) {
 func TestWarningsIgnoreCase(t *testing.T) {
 	if got := Warnings("SUDO make install"); !slices.Contains(got, Elevated) {
 		t.Errorf("Warnings = %v", got)
+	}
+}
+
+func TestWarningsDownloadedCodeHandlesMalformedInput(t *testing.T) {
+	inputs := []string{
+		`sh -c "$(`, `eval $(`, "sh -c `", `bash -c "$($($(`, "curl &&", "curl ;", "&& ./",
+		strings.Repeat("curl ", 10000) + "&& tar x",
+		strings.Repeat(`sh -c "$(`, 10000),
+	}
+	for _, in := range inputs {
+		if got := Warnings(in); slices.Contains(got, PipeToShell) {
+			t.Errorf("Warnings(%.40q) = %v, want no %q", in, got, PipeToShell)
+		}
 	}
 }
 

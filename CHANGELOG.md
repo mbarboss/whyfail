@@ -14,8 +14,9 @@ All notable changes to this project are documented here. The format follows
   prints the cause, a short explanation and up to three suggested fixes.
 - Configuration through `--model`, `--host` and `--timeout` or `WHYFAIL_MODEL`,
   `OLLAMA_HOST` and `WHYFAIL_TIMEOUT`, validated at startup. Default model `gemma4:e4b`.
-- Warnings on suggested fixes that use administrator privileges, pipe into a shell,
-  delete recursively or are otherwise risky.
+- Warnings on suggested fixes that use administrator privileges, run downloaded code
+  (piped into a shell, through `$(curl ...)` or `eval`, or downloaded and then run), delete
+  recursively or are otherwise risky.
 - Secret redaction before prompting: private keys, URL credentials, authorization
   headers, common token formats and `password=`-style values are replaced by typed
   placeholders, with a notice on stderr listing the kinds removed.
