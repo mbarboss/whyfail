@@ -28,11 +28,12 @@ var (
 // Choose asks which of commands to run and then asks to confirm it, reading
 // answers from in and writing the dialog to out. It returns the index of the
 // confirmed command. commands must be exactly as displayed, since the
-// confirmed one runs as is; shell names the program that runs it.
+// confirmed one runs as is; shell names the program that runs it, and warn
+// returns the warnings for a command (Warnings or WarningsFor).
 //
 // The default answer is always no. A command with a danger warning needs the
 // word "yes", not just "y".
-func Choose(ctx context.Context, in io.Reader, out io.Writer, commands []string, shell string) (int, error) {
+func Choose(ctx context.Context, in io.Reader, out io.Writer, commands []string, shell string, warn func(string) []string) (int, error) {
 	r := lineReader{ctx: ctx, r: bufio.NewReader(in)}
 	i := 0
 	if len(commands) > 1 {
@@ -47,7 +48,7 @@ func Choose(ctx context.Context, in io.Reader, out io.Writer, commands []string,
 	if placeholder.MatchString(commands[i]) {
 		return i, fmt.Errorf("%w: fix %d", ErrPlaceholder, i+1)
 	}
-	return i, interrupted(out, confirm(r, out, commands[i], shell))
+	return i, interrupted(out, confirm(r, out, commands[i], shell, warn))
 }
 
 // pick returns the zero-based index of the fix the user typed. It asks again
@@ -73,9 +74,9 @@ func pick(r lineReader, out io.Writer, n int) (int, error) {
 	}
 }
 
-func confirm(r lineReader, out io.Writer, command, shell string) error {
+func confirm(r lineReader, out io.Writer, command, shell string, warn func(string) []string) error {
 	fmt.Fprintf(out, "\n  %s\n", command)
-	warnings := Warnings(command)
+	warnings := warn(command)
 	for _, w := range warnings {
 		fmt.Fprintf(out, "  Warning: %s.\n", w)
 	}

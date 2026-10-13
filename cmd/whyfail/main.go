@@ -126,6 +126,9 @@ type outcome struct {
 	// command and childExit are set in wrapper mode once the command ran.
 	command   *string
 	childExit *int
+	// output is the redacted output the model saw; fixes that install a
+	// package named in it get a warning.
+	output string
 }
 
 // run executes the requested mode and returns the process exit code.
@@ -189,7 +192,7 @@ func finish(cfg config.Config, d deps, o outcome) int {
 		if o.fail != nil {
 			r.Error = &render.ReportError{Code: o.fail.code, Message: o.fail.message}
 		}
-		if err := render.JSON(d.stdout, r, apply.Warnings); err != nil {
+		if err := render.JSON(d.stdout, r, apply.WarningsFor(o.output)); err != nil {
 			return writeFailed(d, o, err)
 		}
 		return o.exit
@@ -199,7 +202,7 @@ func finish(cfg config.Config, d deps, o outcome) int {
 		fmt.Fprintf(d.stderr, "whyfail: %s\n", o.fail.message)
 	}
 	if o.answer != nil {
-		if err := render.Text(d.stdout, *o.answer, apply.Warnings); err != nil {
+		if err := render.Text(d.stdout, *o.answer, apply.WarningsFor(o.output)); err != nil {
 			return writeFailed(d, o, err)
 		}
 	}
@@ -252,25 +255,25 @@ func finishAndApply(ctx context.Context, cfg config.Config, d deps, a *applier, 
 	if o.answer == nil || code != o.exit {
 		return code
 	}
-	return a.offer(ctx, d, *o.answer, o.childExit)
+	return a.offer(ctx, d, o)
 }
 
 // offer asks which fix to run, confirms it and runs it in the user's shell.
 // In pipe mode whyfail exits with the fix's code (0 when nothing ran); in
 // wrapper mode it keeps the wrapped command's code.
-func (a *applier) offer(ctx context.Context, d deps, answer llm.Explanation, childExit *int) int {
+func (a *applier) offer(ctx context.Context, d deps, o outcome) int {
 	exit := func(code int) int {
-		if childExit != nil {
-			return *childExit
+		if o.childExit != nil {
+			return *o.childExit
 		}
 		return code
 	}
-	commands := make([]string, len(answer.Fixes))
-	for i, f := range answer.Fixes {
+	commands := make([]string, len(o.answer.Fixes))
+	for i, f := range o.answer.Fixes {
 		commands[i] = render.OneLine(f.Command)
 	}
 
-	i, err := apply.Choose(ctx, a.term.In, a.term.Out, commands, a.shell.Name())
+	i, err := apply.Choose(ctx, a.term.In, a.term.Out, commands, a.shell.Name(), apply.WarningsFor(o.output))
 	switch {
 	case errors.Is(err, apply.ErrSkipped), errors.Is(err, apply.ErrDeclined):
 		fmt.Fprintln(a.term.Out, "Nothing was run.")
@@ -471,7 +474,7 @@ func explain(ctx context.Context, cfg config.Config, d deps, f prompt.Failure) o
 	if err != nil {
 		return explainFailure(cfg, err)
 	}
-	return outcome{exit: exitOK, answer: &answer}
+	return outcome{exit: exitOK, answer: &answer, output: output.Text}
 }
 
 // reportRedaction tells the user that secrets were removed, naming only their

@@ -153,6 +153,26 @@ func TestApplyRefusesFixWithPlaceholder(t *testing.T) {
 	}
 }
 
+func TestApplyNeedsYesForAPackageNamedInTheOutput(t *testing.T) {
+	for _, tt := range []struct {
+		answer string
+		ran    bool
+	}{{"y\n", false}, {"yes\n", true}} {
+		h, d := newHarness("ModuleNotFoundError: No module named 'modulo_inexistente'\n")
+		h.fake.answer.Fixes = []llm.Fix{{Command: "pip install modulo_inexistente", Description: "Install it."}}
+		ft := withTerminal(&d, tt.answer)
+
+		run(context.Background(), []string{"-apply"}, d)
+
+		if (ft.ran != nil) != tt.ran {
+			t.Errorf("answer %q: ran = %v, want ran %v", tt.answer, ft.ran, tt.ran)
+		}
+		if !strings.Contains(h.stdout.String(), "Warning: installs a package named in the error output") {
+			t.Errorf("stdout lacks the package warning: %q", h.stdout.String())
+		}
+	}
+}
+
 func TestApplyReportsAFixThatCannotStart(t *testing.T) {
 	h, d := newHarness("error\n")
 	ft := withTerminal(&d, "y\n")

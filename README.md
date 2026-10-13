@@ -43,7 +43,10 @@ Suggested fixes (review before running):
 whyfail never runs the suggested commands on its own (see [Running a fix](#running-a-fix)).
 They come from a language model, so read them before you run them. Commands that use administrator privileges, pipe downloads into a
 shell, delete recursively, force-stop processes, discard Git changes, write to disks or
-edit files in place get a warning line.
+edit files in place get a warning line. So does a fix that installs a package (pip, npm,
+pnpm, yarn, uv, gem, cargo, go) whose name appears in the error output: that name may be a
+typo or text planted in the output, and anyone can publish a package under it. Check the
+name and where it comes from before installing it.
 
 Only the last 200 lines (at most 16 KiB) of the output are sent to the model, and secrets
 are removed first. whyfail replaces private keys, credentials in URLs, `Authorization`
