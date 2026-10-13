@@ -38,16 +38,18 @@ type target struct {
 
 func targets() map[string]target {
 	return map[string]target{
-		"format":      {"format all Go code", noArgs(func(ctx context.Context) error { return tool(ctx, "golangci-lint", "fmt") })},
-		"lint":        {"run linters", noArgs(lint)},
-		"test":        {"run unit tests and enforce the coverage floor", noArgs(test)},
-		"race":        {"run unit tests with the race detector (needs a C compiler)", noArgs(race)},
-		"integration": {"run opt-in integration tests (needs a running Ollama)", noArgs(integration)},
-		"vuln":        {"scan dependencies for known vulnerabilities", noArgs(vuln)},
-		"secrets":     {"scan git history for secrets", noArgs(secrets)},
-		"check":       {"tidy, format check, lint, test, vuln and secrets", noArgs(check)},
-		"hooks":       {"install git hooks", noArgs(func(ctx context.Context) error { return tool(ctx, "lefthook", "install") })},
-		"large-files": {"fail if any given file exceeds 1 MiB", func(_ context.Context, paths []string) error { return largeFiles(paths) }},
+		"format":        {"format all Go code", noArgs(func(ctx context.Context) error { return tool(ctx, "golangci-lint", "fmt") })},
+		"lint":          {"run linters", noArgs(lint)},
+		"test":          {"run unit tests and enforce the coverage floor", noArgs(test)},
+		"race":          {"run unit tests with the race detector (needs a C compiler)", noArgs(race)},
+		"integration":   {"run opt-in integration tests (needs a running Ollama)", noArgs(integration)},
+		"vuln":          {"scan dependencies for known vulnerabilities", noArgs(vuln)},
+		"secrets":       {"scan git history for secrets", noArgs(secrets)},
+		"check":         {"tidy, format check, lint, test, vuln and secrets", noArgs(check)},
+		"hooks":         {"install git hooks", noArgs(func(ctx context.Context) error { return tool(ctx, "lefthook", "install") })},
+		"large-files":   {"fail if any given file exceeds 1 MiB", func(_ context.Context, paths []string) error { return largeFiles(paths) }},
+		"release-notes": {"write the CHANGELOG section of a version: release-notes <version> <file>", releaseNotesTarget},
+		"smoke":         {"check downloaded release archives and run this platform's binary: smoke <dir> <version>", smoke},
 	}
 }
 
@@ -145,7 +147,9 @@ func test(ctx context.Context) (err error) {
 	if total < coverageFloor {
 		return fmt.Errorf("coverage %.1f%% is below the %.1f%% floor", total, coverageFloor)
 	}
-	return nil
+	// The task runner has its own tests; they run but do not count toward
+	// the application's coverage.
+	return goCmd(ctx, "test", "-shuffle=on", "./tools/task")
 }
 
 // race is not part of check: the race detector needs cgo and a C compiler,

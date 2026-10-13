@@ -1,0 +1,45 @@
+# GoReleaser configuration for the release workflow (.github/workflows/release.yml).
+# Archive names must match archiveName in tools/task/release.go.
+version: 2
+
+project_name: whyfail
+
+builds:
+  - id: whyfail
+    main: ./cmd/whyfail
+    binary: whyfail
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    # File times from the commit, so the same tag always builds the same bytes.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: whyfail
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# Release notes come from CHANGELOG.md (go run ./tools/task release-notes).
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: mbarboss
+    name: whyfail

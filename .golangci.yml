@@ -30,6 +30,10 @@ linters:
       - path: tools/task/
         linters: [gosec]
         text: "G204"
+      # Its file paths come from its own arguments, given by developers and CI.
+      - path: tools/task/
+        linters: [gosec]
+        text: "G304|G703"
 
 formatters:
   enable:

@@ -44,6 +44,8 @@ All notable changes to this project are documented here. The format follows
   or a placeholder such as `<branch-name>` (which also gets a warning).
 - Fixes that install a package named in the error output (pip, uv, npm, pnpm, yarn, gem,
   cargo, go) get a warning, so `--apply` asks for `yes` before running them.
+- Release archives for Linux, macOS and Windows (amd64 and arm64), with SHA-256 checksums
+  and build provenance attestations.
 - Model output is stripped of terminal escape sequences and control characters before it
   is printed, and only the tail of the command output is sent to the model.
 
