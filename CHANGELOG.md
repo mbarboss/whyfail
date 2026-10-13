@@ -46,6 +46,8 @@ All notable changes to this project are documented here. The format follows
   cargo, go) get a warning, so `--apply` asks for `yes` before running them.
 - `--version` prints the release version, or the module version for builds made with
   `go install` or `go build`.
+- Release archives for Linux, macOS and Windows (amd64 and arm64), with SHA-256 checksums
+  and build provenance attestations.
 - Model output is stripped of terminal escape sequences and control characters before it
   is printed, and only the tail of the command output is sent to the model.
 

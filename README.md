@@ -6,6 +6,54 @@ through [Ollama](https://ollama.com). The command output never leaves your machi
 > Status: in early development. Nothing is released yet; the planned work is tracked in
 > [issues](https://github.com/mbarboss/whyfail/issues).
 
+## Install
+
+Download the archive for your system from the
+[latest release](https://github.com/mbarboss/whyfail/releases/latest), extract it and put
+`whyfail` (`whyfail.exe` on Windows) in a directory on your `PATH`.
+
+| OS | Archive |
+|---|---|
+| Linux | `whyfail_<version>_linux_amd64.tar.gz` or `_linux_arm64.tar.gz` |
+| macOS | `whyfail_<version>_darwin_arm64.tar.gz` (Apple silicon) or `_darwin_amd64.tar.gz` (Intel) |
+| Windows | `whyfail_<version>_windows_amd64.zip` or `_windows_arm64.zip` |
+
+```sh
+# Linux and macOS
+tar xzf whyfail_<version>_<os>_<arch>.tar.gz
+mkdir -p ~/.local/bin && mv whyfail ~/.local/bin/
+```
+
+```powershell
+# Windows (PowerShell)
+Expand-Archive whyfail_<version>_windows_amd64.zip -DestinationPath "$env:LOCALAPPDATA\Programs\whyfail"
+# Then add that folder to your user PATH.
+```
+
+The binaries are not signed by Apple or Microsoft. On macOS, a binary downloaded with a
+browser is quarantined; allow it with `xattr -d com.apple.quarantine ~/.local/bin/whyfail`.
+
+To check a download, compare it with `checksums.txt` from the same release, and verify that
+it was built by this repository's release workflow with the
+[GitHub CLI](https://cli.github.com):
+
+```sh
+sha256sum --check --ignore-missing checksums.txt        # Linux
+shasum -a 256 --check --ignore-missing checksums.txt    # macOS
+gh attestation verify whyfail_<version>_<os>_<arch>.tar.gz --repo mbarboss/whyfail
+```
+
+On Windows, compare `(Get-FileHash whyfail_<version>_windows_amd64.zip).Hash` with the line
+in `checksums.txt`.
+
+With Go 1.27 or later you can also build it from source:
+
+```sh
+go install github.com/mbarboss/whyfail/cmd/whyfail@latest
+```
+
+whyfail also needs Ollama and a model; see [Requirements](#requirements).
+
 ## Usage
 
 Put the command after `--`. whyfail runs it, shows its output as it arrives, and explains
@@ -259,6 +307,19 @@ All commands run from the repository root and work the same on every OS.
 
 The pre-commit hook formats staged Go files, runs the linters, scans staged changes for
 secrets and rejects files larger than 1 MiB.
+
+### Releasing
+
+1. Move the `Unreleased` entries in `CHANGELOG.md` to a `## [X.Y.Z] - YYYY-MM-DD` section and
+   merge that change.
+2. Tag the merge commit on `main` and push the tag: `git tag vX.Y.Z` and
+   `git push origin vX.Y.Z`.
+
+The release workflow then runs the full check on all three OSes, builds the archives with
+[GoReleaser](https://goreleaser.com) (`.goreleaser.yaml`), publishes them with the
+`CHANGELOG.md` section as release notes, attests their provenance, and finally downloads the
+published archives on Linux, macOS and Windows to run a smoke test
+(`go run ./tools/task smoke <dir> <version>`).
 
 ## License
 
