@@ -1,0 +1,17 @@
+{
+	"output": "fatal: The current branch feature/login has no upstream branch.\nTo push the current branch and set the remote as upstream, use\n\n    git push --set-upstream origin feature/login\n\nTo have this happen automatically for branches without a tracking\nupstream, see 'push.autoSetupRemote' in 'git help config'.\n",
+	"command": "git push",
+	"exitCode": 128,
+	"env": {
+		"os": "Linux",
+		"distro": "Ubuntu 24.04.1 LTS",
+		"arch": "amd64",
+		"shell": "bash"
+	},
+	"expect": {
+		"fixMatches": [
+			"git push (-u|--set-upstream) origin feature/login"
+		],
+		"warnings": false
+	}
+}

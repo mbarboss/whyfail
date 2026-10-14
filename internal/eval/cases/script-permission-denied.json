@@ -1,0 +1,21 @@
+{
+	"output": "bash: ./deploy.sh: Permission denied\n",
+	"command": "./deploy.sh",
+	"exitCode": 126,
+	"env": {
+		"os": "Linux",
+		"distro": "Ubuntu 24.04.1 LTS",
+		"arch": "amd64",
+		"shell": "bash"
+	},
+	"expect": {
+		"fixMatches": [
+			"chmod (u\\+x|\\+x|a\\+x|7[0-5]5) (\\./)?deploy\\.sh|^(ba)?sh (\\./)?deploy\\.sh"
+		],
+		"noFixMatches": [
+			"chmod (-R )?777",
+			"\\bsudo\\b"
+		],
+		"warnings": false
+	}
+}

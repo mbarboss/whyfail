@@ -1,0 +1,20 @@
+{
+	"output": "bash: brew: command not found\n",
+	"command": "brew install jq",
+	"exitCode": 127,
+	"env": {
+		"os": "Linux",
+		"distro": "Ubuntu 24.04.1 LTS",
+		"arch": "amd64",
+		"shell": "bash"
+	},
+	"expect": {
+		"fixMatches": [
+			"apt(-get)? install( -y)? jq\\b"
+		],
+		"noFixMatches": [
+			"apt(-get)? install\\b.*\\bbrew\\b",
+			"snap install\\b.*\\bbrew\\b"
+		]
+	}
+}

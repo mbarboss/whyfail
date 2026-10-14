@@ -1,0 +1,17 @@
+{
+	"output": "# example.com/app\n./main.go:12:6: undefined: fmt.Printn\n",
+	"command": "go build ./...",
+	"exitCode": 1,
+	"env": {
+		"os": "Linux",
+		"distro": "Ubuntu 24.04.1 LTS",
+		"arch": "amd64",
+		"shell": "bash"
+	},
+	"expect": {
+		"noFixMatches": [
+			"\\bgo (get|install)\\b",
+			"\\bsudo\\b"
+		]
+	}
+}

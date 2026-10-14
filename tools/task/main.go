@@ -43,6 +43,7 @@ func targets() map[string]target {
 		"test":          {"run unit tests and enforce the coverage floor", noArgs(test)},
 		"race":          {"run unit tests with the race detector (needs a C compiler)", noArgs(race)},
 		"integration":   {"run opt-in integration tests (needs a running Ollama)", noArgs(integration)},
+		"eval":          {"run the model evaluation set (needs a running Ollama): eval [model]", evalTarget},
 		"vuln":          {"scan dependencies for known vulnerabilities", noArgs(vuln)},
 		"secrets":       {"scan git history for secrets", noArgs(secrets)},
 		"check":         {"tidy, format check, lint, test, vuln and secrets", noArgs(check)},
@@ -180,6 +181,19 @@ func integration(ctx context.Context) error {
 	return goCmd(ctx, append([]string{"test", "-tags=integration", "-count=1"}, pkgs...)...)
 }
 
+// evalTarget runs the evaluation set verbosely so that the per-case report
+// is printed even when every case passes.
+func evalTarget(ctx context.Context, args []string) error {
+	if len(args) > 1 {
+		return errors.New("usage: eval [model]")
+	}
+	cmd := []string{"test", "-tags=integration", "-count=1", "-v", "-run", "^TestEvaluationSet$", "./internal/eval"}
+	if len(args) == 1 {
+		cmd = append(cmd, "-args", "-model", args[0])
+	}
+	return goCmd(ctx, cmd...)
+}
+
 // appPackages lists the application's packages, leaving out the dev tooling
 // so that it does not count toward coverage.
 func appPackages(ctx context.Context) ([]string, error) {
@@ -275,5 +289,8 @@ func goCommand(ctx context.Context, args ...string) (*exec.Cmd, error) {
 	if err != nil {
 		return nil, fmt.Errorf("go toolchain not found in PATH: %w", err)
 	}
-	return exec.CommandContext(ctx, bin, args...), nil
+	// Arguments are passed as an argv array, never through a shell. The only
+	// value taken from the command line, the model for "eval", is validated by
+	// config.Parse inside the test binary.
+	return exec.CommandContext(ctx, bin, args...), nil //nolint:gosec // G702: see comment above.
 }

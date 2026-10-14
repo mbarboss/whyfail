@@ -300,13 +300,50 @@ All commands run from the repository root and work the same on every OS.
 | Format code | `go run ./tools/task format` |
 | Full check (tidy, format, lint, tests, vulnerabilities, secrets) | `go run ./tools/task check` |
 | Tests with the race detector (need a C compiler, such as gcc, Xcode Command Line Tools or MinGW-w64; CI runs them on Linux) | `go run ./tools/task race` |
-| Integration tests (need a running Ollama) | `go run ./tools/task integration` |
+| Integration tests, evaluation set included (need a running Ollama) | `go run ./tools/task integration` |
+| Evaluation set only, optionally for another model | `go run ./tools/task eval [model]` |
 | Run locally | `<command> 2>&1 \| go run ./cmd/whyfail` |
 | List all targets | `go run ./tools/task` |
 | Re-record the demo GIF (needs [VHS](https://github.com/charmbracelet/vhs) with `ttyd` and `ffmpeg`, plus Ollama) | `vhs docs/demo.tape` |
 
 The pre-commit hook formats staged Go files, runs the linters, scans staged changes for
 secrets and rejects files larger than 1 MiB.
+
+### Evaluating answers
+
+`internal/eval/cases/` holds real failures, one JSON file each, with properties a good
+answer must have. `go run ./tools/task eval` asks the local model about every case and
+prints a pass/fail line and the latency per case, so you can compare a prompt change or
+another model (`go run ./tools/task eval qwen3.5:4b`) against the previous run. The first
+case also pays for loading the model. Cases that fail show the suggested fixes and the
+property they broke.
+
+A case looks like this:
+
+```json
+{
+	"output": "bash: brew: command not found\n",
+	"command": "brew install jq",
+	"exitCode": 127,
+	"env": {"os": "Linux", "distro": "Ubuntu 24.04.1 LTS", "arch": "amd64", "shell": "bash"},
+	"expect": {
+		"fixMatches": ["apt(-get)? install( -y)? jq\\b"],
+		"noFixMatches": ["apt(-get)? install\\b.*\\bbrew\\b"],
+		"warnings": false
+	}
+}
+```
+
+- `command` and `exitCode` are optional, as in pipe mode. `env.shell` is `bash`, `zsh`,
+  `fish`, `pwsh`, `powershell`, `cmd` or `unknown`.
+- `fixMatches`: every pattern must match at least one suggested fix.
+- `noFixMatches`: no suggested fix may match any of these patterns.
+- `warnings`: `true` if some fix must carry a danger warning, `false` if none may; leave
+  it out when it does not matter.
+
+Patterns use [Go regexp syntax](https://pkg.go.dev/regexp/syntax). Check properties that
+any good answer has, not the wording of one answer. The unit tests load every case, so
+`check` rejects a malformed one.
 
 ### Releasing
 

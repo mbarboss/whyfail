@@ -1,0 +1,20 @@
+{
+	"output": "'node' is not recognized as an internal or external command,\noperable program or batch file.\n",
+	"command": "node --version",
+	"exitCode": 9009,
+	"env": {
+		"os": "Windows",
+		"arch": "amd64",
+		"shell": "cmd"
+	},
+	"expect": {
+		"fixMatches": [
+			"(?i)winget install|choco install|scoop install|nvm install"
+		],
+		"noFixMatches": [
+			"\\b(sudo|apt|brew)\\b",
+			"^export |\\$PATH",
+			"\\bnpm\\b"
+		]
+	}
+}
