@@ -1,3 +1,9 @@
+# lefthook is pinned in its own module and runs through `go tool`, which builds
+# it in a temporary directory. Without this line the installed hook would call
+# that temporary path, which is gone once `task hooks` returns. Git runs hooks
+# from the root of the working tree, so the relative modfile path holds.
+lefthook: go tool -modfile=tools/lefthook/go.mod lefthook
+
 pre-commit:
   parallel: true
   jobs:
