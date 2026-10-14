@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -183,7 +184,9 @@ func TestRunDoesNotWaitForGrandchildrenHoldingOutput(t *testing.T) {
 	if elapsed := time.Since(start); elapsed > 4*time.Second {
 		t.Errorf("Run took %v, want it to return soon after the child exits", elapsed)
 	}
-	if got.ExitCode != 1 || !strings.HasPrefix(got.Tail.Text, "started\n") {
+	// stdout and stderr are separate pipes, so "started" and the grandchild
+	// line on stderr reach the tail in either order.
+	if got.ExitCode != 1 || !slices.Contains(strings.Split(got.Tail.Text, "\n"), "started") {
 		t.Errorf("got %+v", got)
 	}
 }
