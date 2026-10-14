@@ -65,7 +65,7 @@ func warnSudo(cmd string) []string {
 func TestTextLayout(t *testing.T) {
 	var buf bytes.Buffer
 
-	if err := Text(&buf, explanation(), warnSudo); err != nil {
+	if err := Text(&buf, explanation(), warnSudo, 80); err != nil {
 		t.Fatalf("Text: %v", err)
 	}
 
@@ -95,7 +95,7 @@ func TestTextSanitizesEveryField(t *testing.T) {
 	}
 	var buf bytes.Buffer
 
-	if err := Text(&buf, e, func(string) []string { return []string{"\x1b[1mbad"} }); err != nil {
+	if err := Text(&buf, e, func(string) []string { return []string{"\x1b[1mbad"} }, 80); err != nil {
 		t.Fatalf("Text: %v", err)
 	}
 
@@ -109,7 +109,7 @@ func TestTextWarnsOnSanitizedCommand(t *testing.T) {
 	e := explanation()
 	e.Fixes = []llm.Fix{{Command: "su\x1b[0mdo rm x", Description: "d"}}
 
-	_ = Text(&bytes.Buffer{}, e, func(cmd string) []string { seen = cmd; return nil })
+	_ = Text(&bytes.Buffer{}, e, func(cmd string) []string { seen = cmd; return nil }, 80)
 
 	if seen != "sudo rm x" {
 		t.Errorf("warn got %q, want the sanitized command", seen)
@@ -121,7 +121,7 @@ func TestTextIndentsMultiLineExplanation(t *testing.T) {
 	e.Fixes[0].Description = "first\nsecond"
 	var buf bytes.Buffer
 
-	_ = Text(&buf, e, nil)
+	_ = Text(&buf, e, nil, 80)
 
 	if !strings.Contains(buf.String(), "  1. first\n     second\n") {
 		t.Errorf("multi-line description not indented:\n%s", buf.String())
@@ -133,7 +133,7 @@ type failWriter struct{}
 func (failWriter) Write([]byte) (int, error) { return 0, errors.New("closed") }
 
 func TestTextReturnsWriteError(t *testing.T) {
-	if err := Text(failWriter{}, explanation(), nil); err == nil {
+	if err := Text(failWriter{}, explanation(), nil, 80); err == nil {
 		t.Error("want write error")
 	}
 }

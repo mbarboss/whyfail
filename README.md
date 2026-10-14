@@ -87,6 +87,9 @@ Suggested fixes (review before running):
      newgrp docker
 ```
 
+Text wraps to the terminal width (at most 100 columns), or to 80 columns when the output is
+redirected. Commands are never wrapped, so you can copy them as shown.
+
 whyfail never runs the suggested commands on its own (see [Running a fix](#running-a-fix)).
 They come from a language model, so read them before you run them. Commands that use
 administrator privileges, run downloaded code (`curl ... | sh`, `bash -c "$(curl ...)"`, or a

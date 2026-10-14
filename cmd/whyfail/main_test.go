@@ -78,7 +78,8 @@ func newHarness(stdin string) (*harness, deps) {
 			h.cfg = cfg
 			return h.server
 		},
-		lookPath: func(string) (string, error) { return "/usr/local/bin/ollama", nil },
+		lookPath:    func(string) (string, error) { return "/usr/local/bin/ollama", nil },
+		stdoutWidth: func() (int, bool) { return 0, false },
 		probe: sysinfo.Probe{
 			GOOS:       "linux",
 			GOARCH:     "arm64",
@@ -528,5 +529,34 @@ func TestRunRejectsInvalidShell(t *testing.T) {
 
 	if code != exitUsage || h.fake.calls != 0 {
 		t.Errorf("exit code = %d, calls = %d", code, h.fake.calls)
+	}
+}
+
+func TestRunWrapsTextToTheTerminalWidth(t *testing.T) {
+	h, d := newHarness("fatal: no upstream\n")
+	h.fake.answer.Explanation = "Git does not know which remote branch the current branch should push to."
+	d.stdoutWidth = func() (int, bool) { return 40, true }
+
+	code := run(context.Background(), nil, d)
+
+	if code != exitOK {
+		t.Fatalf("exit code = %d, want %d; stderr: %s", code, exitOK, h.stderr.String())
+	}
+	if !strings.Contains(h.stdout.String(), "Git does not know which remote branch\nthe current branch should push to.") {
+		t.Errorf("explanation not wrapped at 40 columns:\n%s", h.stdout.String())
+	}
+}
+
+func TestRunWrapsRedirectedTextAtTheDefaultWidth(t *testing.T) {
+	h, d := newHarness("fatal: no upstream\n")
+	h.fake.answer.Explanation = strings.Repeat("word ", 30)
+
+	if code := run(context.Background(), nil, d); code != exitOK {
+		t.Fatalf("exit code = %d, want %d", code, exitOK)
+	}
+	for _, line := range strings.Split(h.stdout.String(), "\n") {
+		if len(line) > 80 {
+			t.Errorf("line longer than 80 columns: %q", line)
+		}
 	}
 }
