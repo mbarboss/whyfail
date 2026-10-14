@@ -322,6 +322,11 @@ case also pays for loading the model. Cases that fail show the suggested fixes a
 property they broke. Answers can still differ slightly between runs on a GPU even at
 temperature 0, so run the set more than once before drawing a conclusion.
 
+With the default model one case is a known failure: for `npm-eacces-short` the model still
+offers `sudo npm install -g` as a last option. That fix carries a warning and `--apply`
+asks for `yes` before running it. Rewording the prompt did not fix it without breaking
+other cases, so the case stays as a target and `task integration` reports it.
+
 A case looks like this:
 
 ```json
