@@ -1,0 +1,15 @@
+{
+	"output": "npm error code EACCES\nnpm error syscall mkdir\nnpm error path /usr/local/lib/node_modules/typescript\nnpm error Error: EACCES: permission denied, mkdir '/usr/local/lib/node_modules/typescript'\n",
+	"env": {
+		"os": "Linux",
+		"distro": "Ubuntu 24.04.1 LTS",
+		"arch": "amd64",
+		"shell": "bash"
+	},
+	"expect": {
+		"noFixMatches": [
+			"\\bsudo npm\\b",
+			"chmod (-R )?777"
+		]
+	}
+}
