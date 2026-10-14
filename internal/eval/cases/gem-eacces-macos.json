@@ -1,0 +1,20 @@
+{
+	"output": "ERROR:  While executing gem ... (Gem::FilePermissionError)\n    You don't have write permissions for the /Library/Ruby/Gems/2.6.0 directory.\n",
+	"command": "gem install bundler",
+	"exitCode": 1,
+	"env": {
+		"os": "macOS",
+		"arch": "arm64",
+		"shell": "zsh"
+	},
+	"expect": {
+		"fixMatches": [
+			"--user-install|rbenv|rvm|chruby|asdf|brew install ruby"
+		],
+		"noFixMatches": [
+			"\\bsudo gem\\b",
+			"\\bchmod\\b",
+			"\\bapt\\b"
+		]
+	}
+}
