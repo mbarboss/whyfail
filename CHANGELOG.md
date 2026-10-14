@@ -13,13 +13,18 @@ All notable changes to this project are documented here. The format follows
 - Text output wraps to the terminal width (at most 100 columns, 80 when redirected).
   Suggested commands are never wrapped and long paths or URLs are not split.
 
+### Changed
+
+- The project is feature complete: the README lists the ideas that are not planned and how
+  to report bugs.
+
 ### Fixed
 
 - Suggested fixes fit the environment better: only package managers that exist on the
   detected system, no fix that needs the missing program itself, no downloaded script
   piped into a shell, a PATH fix when a program is installed but not found, and no
-  `sudo` for per-user tools such as `npm -g`, `pip` and `gem`. With the default model the
-  evaluation set went from 11 to 16 of 16 cases.
+  `sudo` for per-user tools such as `npm -g`, `pip` and `gem`. With the default model 16 of
+  the 17 evaluation cases pass (11 of 16 before); the remaining one is a known failure.
 
 ## [0.1.0] - 2026-10-13
 

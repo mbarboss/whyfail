@@ -367,6 +367,23 @@ The release workflow then runs the full check on all three OSes, builds the arch
 published archives on Linux, macOS and Windows to run a smoke test
 (`go run ./tools/task smoke <dir> <version>`).
 
+## Project status
+
+whyfail is feature complete. It is maintained for bug fixes, security fixes and dependency
+updates, and new features are unlikely to be added.
+
+These ideas were considered and are not planned:
+
+- Shell integration that records the last command (`whyfail init bash|zsh|fish|pwsh`).
+- An offline, rule-based answer for common errors without a model.
+- A cache of previous answers.
+- Running wrapped commands in a pseudo-terminal to keep their colors and progress bars.
+- Homebrew, Scoop and winget packages. Use the release archives or `go install`.
+
+Bug reports are welcome as GitHub issues. Include the whyfail version, your OS and shell,
+the model, and the output of `whyfail doctor`. Remove anything private from the captured
+output first. Report security problems as described in [SECURITY.md](SECURITY.md).
+
 ## License
 
 [MIT](LICENSE)
