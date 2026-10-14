@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 - Evaluation set of real failures with expected answer properties, run against the local
   model with `go run ./tools/task eval [model]` to compare prompts and models.
+- Text output wraps to the terminal width (at most 100 columns, 80 when redirected).
+  Suggested commands are never wrapped and long paths or URLs are not split.
 
 ### Fixed
 

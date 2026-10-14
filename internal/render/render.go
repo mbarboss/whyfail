@@ -40,10 +40,10 @@ func Sanitize(s string) string {
 
 // Text writes e as plain text. warn returns the warnings for one command; it
 // may be nil. Every field is sanitized because it comes from the model.
-func Text(w io.Writer, e llm.Explanation, warn func(command string) []string) error {
+func Text(w io.Writer, e llm.Explanation, warn func(command string) []string, width int) error {
 	var b strings.Builder
-	b.WriteString("Cause: " + OneLine(e.Cause) + "\n\n")
-	b.WriteString(Sanitize(e.Explanation) + "\n\n")
+	b.WriteString(wrap("Cause: ", OneLine(e.Cause), width, "       ") + "\n\n")
+	b.WriteString(wrap("", Sanitize(e.Explanation), width, "") + "\n\n")
 	b.WriteString("Suggested fixes (review before running):\n")
 
 	for i, f := range e.Fixes {
@@ -51,11 +51,11 @@ func Text(w io.Writer, e llm.Explanation, warn func(command string) []string) er
 		indent := strings.Repeat(" ", 2+len(num))
 		cmd := OneLine(f.Command)
 
-		b.WriteString("\n  " + num + indentLines(Sanitize(f.Description), indent) + "\n")
+		b.WriteString("\n" + wrap("  "+num, Sanitize(f.Description), width, indent) + "\n")
 		b.WriteString(indent + cmd + "\n")
 		if warn != nil {
 			for _, reason := range warn(cmd) {
-				b.WriteString(indent + "Warning: " + OneLine(reason) + ".\n")
+				b.WriteString(wrap(indent+"Warning: ", OneLine(reason)+".", width, indent+"         ") + "\n")
 			}
 		}
 	}
@@ -67,8 +67,4 @@ func Text(w io.Writer, e llm.Explanation, warn func(command string) []string) er
 // Commands are shown in this form, and -apply runs them exactly as shown.
 func OneLine(s string) string {
 	return strings.Join(strings.Fields(Sanitize(s)), " ")
-}
-
-func indentLines(s, indent string) string {
-	return strings.ReplaceAll(strings.TrimRight(s, "\n"), "\n", "\n"+indent)
 }

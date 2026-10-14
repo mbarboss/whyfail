@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/mbarboss/whyfail/internal/apply"
 	"github.com/mbarboss/whyfail/internal/capture"
 	"github.com/mbarboss/whyfail/internal/config"
@@ -73,13 +75,15 @@ type deps struct {
 	getenv           func(string) string
 	stdinIsTerminal  bool
 	stderrIsTerminal bool
-	newExplainer     func(config.Config) llm.Explainer
-	resolver         netguard.Resolver
-	probe            sysinfo.Probe
-	newServer        func(config.Config) doctor.Server
-	lookPath         func(string) (string, error)
-	openTerminal     func() (apply.Terminal, error)
-	runFix           func(apply.Plan, io.Reader, io.Writer, io.Writer) (int, error)
+	// stdoutWidth returns the terminal width and whether stdout is a terminal.
+	stdoutWidth  func() (int, bool)
+	newExplainer func(config.Config) llm.Explainer
+	resolver     netguard.Resolver
+	probe        sysinfo.Probe
+	newServer    func(config.Config) doctor.Server
+	lookPath     func(string) (string, error)
+	openTerminal func() (apply.Terminal, error)
+	runFix       func(apply.Plan, io.Reader, io.Writer, io.Writer) (int, error)
 }
 
 func main() {
@@ -93,6 +97,7 @@ func main() {
 		getenv:           os.Getenv,
 		stdinIsTerminal:  isTerminal(os.Stdin),
 		stderrIsTerminal: isTerminal(os.Stderr),
+		stdoutWidth:      stdoutWidth,
 		newExplainer:     func(cfg config.Config) llm.Explainer { return newOllama(cfg) },
 		newServer:        func(cfg config.Config) doctor.Server { return newOllama(cfg) },
 		lookPath:         exec.LookPath,
@@ -117,6 +122,18 @@ func newOllama(cfg config.Config) *ollama.Client {
 	transport.Proxy = nil
 	transport.DialContext = dialer.DialContext
 	return ollama.New(cfg.Host, cfg.Model, &http.Client{Transport: transport})
+}
+
+// stdoutWidth reports the width of the terminal stdout is connected to.
+func stdoutWidth() (int, bool) {
+	if !isTerminal(os.Stdout) {
+		return 0, false
+	}
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		return 0, true
+	}
+	return width, true
 }
 
 func isTerminal(f *os.File) bool {
@@ -218,7 +235,7 @@ func finish(cfg config.Config, d deps, o outcome) int {
 		fmt.Fprintf(d.stderr, "whyfail: %s\n", o.fail.message)
 	}
 	if o.answer != nil {
-		if err := render.Text(d.stdout, *o.answer, apply.WarningsFor(o.output)); err != nil {
+		if err := render.Text(d.stdout, *o.answer, apply.WarningsFor(o.output), render.LineWidth(d.stdoutWidth())); err != nil {
 			return writeFailed(d, o, err)
 		}
 	}
