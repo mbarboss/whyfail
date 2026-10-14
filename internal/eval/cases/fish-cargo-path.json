@@ -1,0 +1,21 @@
+{
+	"output": "fish: Unknown command: cargo\n",
+	"command": "cargo build",
+	"exitCode": 127,
+	"env": {
+		"os": "Linux",
+		"distro": "Fedora Linux 42 (Workstation Edition)",
+		"arch": "amd64",
+		"shell": "fish"
+	},
+	"expect": {
+		"fixMatches": [
+			"fish_add_path|set (-[gUx]+ )*(fish_user_paths|PATH)|source \\S*env\\.fish|dnf install( -y)? (rust|cargo)"
+		],
+		"noFixMatches": [
+			"^export ",
+			">>\\s*~/\\.(bash|zsh)rc",
+			"\\bapt\\b"
+		]
+	}
+}

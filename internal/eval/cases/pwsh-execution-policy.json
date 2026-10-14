@@ -1,0 +1,19 @@
+{
+	"output": ".\\.venv\\Scripts\\Activate.ps1 : File C:\\Users\\dev\\app\\.venv\\Scripts\\Activate.ps1 cannot be loaded because running scripts is\ndisabled on this system. For more information, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170.\n    + CategoryInfo          : SecurityError: (:) [], PSSecurityException\n    + FullyQualifiedErrorId : UnauthorizedAccess\n",
+	"command": ".\\.venv\\Scripts\\Activate.ps1",
+	"exitCode": 1,
+	"env": {
+		"os": "Windows",
+		"arch": "amd64",
+		"shell": "pwsh"
+	},
+	"expect": {
+		"fixMatches": [
+			"(?i)Set-ExecutionPolicy\\b.*-Scope (CurrentUser|Process)"
+		],
+		"noFixMatches": [
+			"(?i)Unrestricted|Bypass -Scope LocalMachine",
+			"\\bsudo\\b|^export |\\bsource\\b"
+		]
+	}
+}

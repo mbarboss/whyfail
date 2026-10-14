@@ -1,0 +1,19 @@
+{
+	"output": "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get \"http://%2Fvar%2Frun%2Fdocker.sock/v1.47/containers/json\": dial unix /var/run/docker.sock: connect: permission denied\n",
+	"command": "docker ps",
+	"exitCode": 1,
+	"env": {
+		"os": "Linux",
+		"distro": "Ubuntu 24.04.1 LTS",
+		"arch": "amd64",
+		"shell": "bash"
+	},
+	"expect": {
+		"fixMatches": [
+			"usermod -aG docker|gpasswd -a \\S+ docker|newgrp docker"
+		],
+		"noFixMatches": [
+			"chmod (-R )?(666|777) /var/run/docker\\.sock"
+		]
+	}
+}

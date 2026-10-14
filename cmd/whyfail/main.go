@@ -471,13 +471,7 @@ func explain(ctx context.Context, cfg config.Config, d deps, f prompt.Failure) o
 	command, output := redact.Redact(f.Command), redact.Redact(f.Output)
 	reportRedaction(d.stderr, command, output)
 	f.Command, f.Output = command.Text, output.Text
-	info := sysinfo.Detect(d.probe, cfg.Shell)
-	f.Environment = info.String()
-	if info.Shell != sysinfo.Unknown {
-		f.Shell = info.Shell.String()
-	}
-
-	req := prompt.Build(f)
+	req := prompt.ForFailure(f, sysinfo.Detect(d.probe, cfg.Shell))
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 

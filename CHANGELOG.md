@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Evaluation set of real failures with expected answer properties, run against the local
+  model with `go run ./tools/task eval [model]` to compare prompts and models.
+
 ## [0.1.0] - 2026-10-13
 
 ### Added

@@ -1,0 +1,20 @@
+{
+	"output": "error: externally-managed-environment\n\n× This environment is externally managed\n╰─> To install Python packages system-wide, try apt install\n    python3-xyz, where xyz is the package you are trying to\n    install.\n\n    If you wish to install a non-Debian-packaged Python package,\n    create a virtual environment using python3 -m venv path/to/venv.\n    Then use path/to/venv/bin/python and path/to/venv/bin/pip. Make\n    sure you have python3-full installed.\n\nnote: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking your Python installation or OS, by passing --break-system-packages.\nhint: See PEP 668 for the detailed specification.\n",
+	"command": "pip install requests",
+	"exitCode": 1,
+	"env": {
+		"os": "Linux",
+		"distro": "Ubuntu 24.04.1 LTS",
+		"arch": "amd64",
+		"shell": "bash"
+	},
+	"expect": {
+		"fixMatches": [
+			"venv|pipx|apt(-get)? install( -y)? python3-requests"
+		],
+		"noFixMatches": [
+			"--break-system-packages",
+			"\\bpip3? install --user\\b"
+		]
+	}
+}

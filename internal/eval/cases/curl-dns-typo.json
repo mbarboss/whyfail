@@ -1,0 +1,19 @@
+{
+	"output": "curl: (6) Could not resolve host: api.exmaple.com\n",
+	"command": "curl https://api.exmaple.com/v1/status",
+	"exitCode": 6,
+	"env": {
+		"os": "macOS",
+		"arch": "arm64",
+		"shell": "zsh"
+	},
+	"expect": {
+		"fixMatches": [
+			"api\\.example\\.com|nslookup|\\bdig\\b|\\bhost api|ping"
+		],
+		"noFixMatches": [
+			"/etc/hosts"
+		],
+		"warnings": false
+	}
+}

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/mbarboss/whyfail/internal/sysinfo"
 )
 
 func TestBuildPlacesOutputInDelimitedBlock(t *testing.T) {
@@ -147,5 +149,26 @@ func TestBuildSystemPromptAsksForFixesInTheUsersShell(t *testing.T) {
 		if !strings.Contains(system, want) {
 			t.Errorf("System prompt lacks %q", want)
 		}
+	}
+}
+
+func TestForFailureDescribesTheEnvironment(t *testing.T) {
+	info := sysinfo.Info{OS: "Linux", Distro: "Fedora Linux 42", Arch: "arm64", Shell: sysinfo.Fish}
+
+	req := ForFailure(Failure{Output: "x"}, info)
+
+	want := "Environment: Linux (Fedora Linux 42), arm64, shell fish.\nWrite every fix in fish syntax.\n"
+	if !strings.HasPrefix(req.User, want) {
+		t.Errorf("User = %q, want prefix %q", req.User, want)
+	}
+}
+
+func TestForFailureOmitsSyntaxLineForUnknownShell(t *testing.T) {
+	info := sysinfo.Info{OS: "Windows", Arch: "amd64", Shell: sysinfo.Unknown}
+
+	req := ForFailure(Failure{Output: "x"}, info)
+
+	if !strings.HasPrefix(req.User, "Environment: Windows, amd64, shell unknown.\n<output>") {
+		t.Errorf("User = %q", req.User)
 	}
 }

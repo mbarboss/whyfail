@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mbarboss/whyfail/internal/llm"
+	"github.com/mbarboss/whyfail/internal/sysinfo"
 )
 
 // Failure is what whyfail knows about the failed command.
@@ -75,4 +76,13 @@ func neutralize(s string) string {
 	return delimiter.ReplaceAllStringFunc(s, func(m string) string {
 		return "[" + m[1:]
 	})
+}
+
+// ForFailure returns the request for f in the environment described by info.
+func ForFailure(f Failure, info sysinfo.Info) llm.Request {
+	f.Environment = info.String()
+	if info.Shell != sysinfo.Unknown {
+		f.Shell = info.Shell.String()
+	}
+	return Build(f)
 }
