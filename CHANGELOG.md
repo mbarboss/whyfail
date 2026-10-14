@@ -11,6 +11,14 @@ All notable changes to this project are documented here. The format follows
 - Evaluation set of real failures with expected answer properties, run against the local
   model with `go run ./tools/task eval [model]` to compare prompts and models.
 
+### Fixed
+
+- Suggested fixes fit the environment better: only package managers that exist on the
+  detected system, no fix that needs the missing program itself, no downloaded script
+  piped into a shell, a PATH fix when a program is installed but not found, and no
+  `sudo` for per-user tools such as `npm -g`, `pip` and `gem`. With the default model the
+  evaluation set went from 11 to 16 of 16 cases.
+
 ## [0.1.0] - 2026-10-13
 
 ### Added

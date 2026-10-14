@@ -1,0 +1,20 @@
+{
+	"output": "sudo: yum: command not found\n",
+	"command": "sudo yum install htop",
+	"exitCode": 1,
+	"env": {
+		"os": "Linux",
+		"distro": "Ubuntu 24.04.1 LTS",
+		"arch": "amd64",
+		"shell": "bash"
+	},
+	"expect": {
+		"fixMatches": [
+			"apt(-get)? install( -y)? htop\\b"
+		],
+		"noFixMatches": [
+			"apt(-get)? install\\b.*\\b(yum|dnf)\\b",
+			"^(sudo )?dnf\\b"
+		]
+	}
+}

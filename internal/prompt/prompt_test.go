@@ -152,6 +152,23 @@ func TestBuildSystemPromptAsksForFixesInTheUsersShell(t *testing.T) {
 	}
 }
 
+// Each rule answers a weak fix seen in the evaluation set (internal/eval).
+func TestBuildSystemPromptGuardsAgainstFixesThatIgnoreTheEnvironment(t *testing.T) {
+	system := Build(Failure{Output: "x"}).System
+
+	for _, want := range []string{
+		"package managers that exist on that operating system",
+		"never a fix that needs the missing program itself",
+		"fix PATH",
+		"never pipe a downloaded script into a shell",
+		"without sudo",
+	} {
+		if !strings.Contains(system, want) {
+			t.Errorf("System prompt lacks %q", want)
+		}
+	}
+}
+
 func TestForFailureDescribesTheEnvironment(t *testing.T) {
 	info := sysinfo.Info{OS: "Linux", Distro: "Fedora Linux 42", Arch: "arm64", Shell: sysinfo.Fish}
 

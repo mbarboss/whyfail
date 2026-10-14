@@ -316,7 +316,8 @@ answer must have. `go run ./tools/task eval` asks the local model about every ca
 prints a pass/fail line and the latency per case, so you can compare a prompt change or
 another model (`go run ./tools/task eval qwen3.5:4b`) against the previous run. The first
 case also pays for loading the model. Cases that fail show the suggested fixes and the
-property they broke.
+property they broke. Answers can still differ slightly between runs on a GPU even at
+temperature 0, so run the set more than once before drawing a conclusion.
 
 A case looks like this:
 
