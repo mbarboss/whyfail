@@ -248,7 +248,8 @@ info  Environment: Linux (Ubuntu 24.04.1 LTS), amd64, shell bash
 It exits with 0 when every check passes and 1 otherwise. Flags such as `--model` and
 `--host` apply to it too.
 
-On machines with less memory, `qwen3.5:4b` (3.3 GB) is a lighter alternative; select it
+On machines with less memory, `qwen3.5:4b` (3.3 GB) is a lighter alternative with weaker
+answers (13 of the 17 evaluation cases, against 14 to 17 for the default model); select it
 with `--model qwen3.5:4b` or `WHYFAIL_MODEL=qwen3.5:4b`. The first request after Ollama
 starts takes longer while the model loads.
 
@@ -322,10 +323,11 @@ case also pays for loading the model. Cases that fail show the suggested fixes a
 property they broke. Answers can still differ slightly between runs on a GPU even at
 temperature 0, so run the set more than once before drawing a conclusion.
 
-With the default model one case is a known failure: for `npm-eacces-short` the model still
-offers `sudo npm install -g` as a last option. That fix carries a warning and `--apply`
-asks for `yes` before running it. Rewording the prompt did not fix it without breaking
-other cases, so the case stays as a target and `task integration` reports it.
+With the default model, 14 to 17 of the 17 cases pass depending on the run. The two npm
+`EACCES` cases are the unstable ones: the model sometimes offers `sudo npm install -g` as a
+last option. That fix carries a warning and `--apply` asks for `yes` before running it.
+Rewording the prompt did not fix it without breaking other cases, so the cases stay as a
+target and `task integration` may report them.
 
 A case looks like this:
 

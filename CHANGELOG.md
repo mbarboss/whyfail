@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-14
+
 ### Added
 
 - Evaluation set of real failures with expected answer properties, run against the local
@@ -23,8 +25,11 @@ All notable changes to this project are documented here. The format follows
 - Suggested fixes fit the environment better: only package managers that exist on the
   detected system, no fix that needs the missing program itself, no downloaded script
   piped into a shell, a PATH fix when a program is installed but not found, and no
-  `sudo` for per-user tools such as `npm -g`, `pip` and `gem`. With the default model 16 of
-  the 17 evaluation cases pass (11 of 16 before); the remaining one is a known failure.
+  `sudo` for per-user tools such as `npm -g`, `pip` and `gem`. With the default model 14 to
+  17 of the 17 evaluation cases pass depending on the run (11 of 16 before); the npm
+  `EACCES` cases can still get `sudo npm` as a last option, shown with a warning.
+- The pre-commit hook never ran because it pointed at a temporary `go tool` build of
+  lefthook. Contributors with an existing clone run `go run ./tools/task hooks` once more.
 
 ## [0.1.0] - 2026-10-13
 
@@ -78,5 +83,6 @@ All notable changes to this project are documented here. The format follows
 - Require Go toolchain 1.27.2, which fixes several `net/http` and `crypto/tls`
   vulnerabilities in 1.27.1.
 
-[Unreleased]: https://github.com/mbarboss/whyfail/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mbarboss/whyfail/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mbarboss/whyfail/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mbarboss/whyfail/releases/tag/v0.1.0
