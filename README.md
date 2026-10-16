@@ -371,8 +371,8 @@ published archives on Linux, macOS and Windows to run a smoke test
 
 ## Project status
 
-whyfail is feature complete. It is maintained for bug fixes, security fixes and dependency
-updates, and new features are unlikely to be added.
+whyfail is a finished learning project and the repository is archived. v0.2.0 is the
+final release: there will be no new features, bug fixes or dependency updates.
 
 These ideas were considered and are not planned:
 
@@ -381,10 +381,6 @@ These ideas were considered and are not planned:
 - A cache of previous answers.
 - Running wrapped commands in a pseudo-terminal to keep their colors and progress bars.
 - Homebrew, Scoop and winget packages. Use the release archives or `go install`.
-
-Bug reports are welcome as GitHub issues. Include the whyfail version, your OS and shell,
-the model, and the output of `whyfail doctor`. Remove anything private from the captured
-output first. Report security problems as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
